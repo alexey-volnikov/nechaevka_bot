@@ -3,6 +3,8 @@ import logging  # Настройка логирования событий пр�
 import os  # Работа с переменными окружения
 import sqlite3  # Работа с базой SQLite для логов
 import threading  # Запуск фонового потока лонгпулла
+from pathlib import Path  # Удобная работа с путями и иерархией директорий
+from urllib.parse import urlparse  # Разбор URL для выбора имени файла
 from dataclasses import dataclass, field  # Упрощенное объявление классов состояния
 from datetime import datetime, timedelta  # Фиксация времени событий и диапазонов
 from typing import Dict, List, Optional  # Подсказки типов для словарей и списков
@@ -11,6 +13,7 @@ from logging.handlers import RotatingFileHandler  # Обработчик лог�
 
 from dotenv import load_dotenv  # Загрузка переменных окружения из .env
 from flask import Flask, jsonify, render_template, request  # Веб-сервер, рендер и разбор запросов
+import requests  # Загрузка файлов вложений по URL
 import vk_api  # Клиент VK API
 from vk_api.bot_longpoll import VkBotEventType, VkBotLongPoll  # Лонгпулл сообщества для чтения событий
 
@@ -495,6 +498,112 @@ class BotMonitor:
         self.user_cache: Dict[int, Dict[str, Optional[str]]] = {}  # Кэш профилей пользователей (имя и аватар)
         self.group_cache: Dict[int, Dict[str, Optional[str]]] = {}  # Кэш профилей сообществ (имя и аватар)
         self.peer_cache: Dict[int, Dict[str, Optional[str]]] = {}  # Кэш профилей чатов по peer_id
+        self.attachments_dir = Path(os.getenv("ATTACHMENTS_DIR") or os.path.join(os.getcwd(), "data", "attachments"))  # Базовая директория для сохранения вложений
+        self.attachments_dir.mkdir(parents=True, exist_ok=True)  # Создаем директории для вложений при инициализации
+
+    def _sanitize_filename(self, name: str, fallback: str) -> str:
+        cleaned = "".join(ch for ch in name if ch.isalnum() or ch in ("-", "_", "."))  # Оставляем буквы, цифры и безопасные символы
+        return cleaned or fallback  # Возвращаем очищенное имя или запасной вариант
+
+    def _extract_photo_url(self, photo_block: Dict) -> Optional[str]:
+        sizes = photo_block.get("sizes", []) if isinstance(photo_block, dict) else []  # Получаем список размеров фото
+        if not sizes:  # Проверяем наличие размеров
+            return None  # Возвращаем пустое значение, если нет размеров
+        best_size = max(sizes, key=lambda item: item.get("width", 0) * item.get("height", 0))  # Выбираем самое большое изображение
+        return best_size.get("url")  # Возвращаем URL выбранного размера
+
+    def _extract_audio_url(self, audio_block: Dict) -> Optional[str]:
+        if not isinstance(audio_block, dict):  # Проверяем формат блока аудио
+            return None  # Возвращаем пустое значение при некорректном формате
+        return audio_block.get("link_mp3") or audio_block.get("link_ogg")  # Возвращаем ссылку на MP3 или OGG
+
+    def _extract_doc_url(self, doc_block: Dict) -> Optional[str]:
+        if not isinstance(doc_block, dict):  # Проверяем формат блока документа
+            return None  # Возвращаем пустое значение при ошибке
+        return doc_block.get("url")  # Возвращаем прямую ссылку на документ
+
+    def _resolve_video_url(self, video_block: Dict) -> Optional[str]:
+        if not isinstance(video_block, dict):  # Проверяем формат блока видео
+            return None  # Возвращаем пустое значение при ошибке
+        owner_id = video_block.get("owner_id")  # Получаем owner_id видео
+        video_id = video_block.get("id")  # Получаем id видео
+        access_key = video_block.get("access_key")  # Получаем access_key видео
+        if owner_id is None or video_id is None:  # Проверяем наличие обязательных полей
+            return None  # Возвращаем пустое значение, если данных нет
+        videos_param = f"{owner_id}_{video_id}" + (f"_{access_key}" if access_key else "")  # Формируем параметр videos для API
+        try:  # Пробуем запросить VK API
+            response = self.session.method("video.get", {"videos": videos_param})  # Запрашиваем детали видео
+            items = response.get("items", []) if isinstance(response, dict) else []  # Получаем список видео из ответа
+            if not items:  # Проверяем наличие данных
+                return None  # Возвращаем пустое значение при пустом ответе
+            files_block = items[0].get("files", {}) if isinstance(items[0], dict) else {}  # Получаем блок файлов видео
+            if not isinstance(files_block, dict):  # Проверяем формат блока файлов
+                return None  # Возвращаем пустое значение при ошибке
+            candidates = [files_block.get(key) for key in sorted(files_block.keys()) if key.startswith("mp4") or key == "mp4"]  # Собираем ссылки mp4
+            candidates = [url for url in candidates if isinstance(url, str)]  # Оставляем только строки URL
+            return candidates[-1] if candidates else None  # Возвращаем самую последнюю (обычно наибольшее качество)
+        except Exception as exc:  # Обрабатываем ошибки VK API
+            logger.debug("Не удалось запросить файл видео: %s", exc)  # Пишем отладку при неудаче
+            return None  # Возвращаем пустое значение
+
+    def _pick_attachment_url(self, attachment: Dict) -> Optional[str]:
+        if not isinstance(attachment, dict):  # Проверяем формат вложения
+            return None  # Возвращаем пустое значение
+        att_type = attachment.get("type")  # Получаем тип вложения
+        content = attachment.get(att_type, {}) if isinstance(att_type, str) else {}  # Получаем вложенный блок по типу
+        if att_type == "photo":  # Если вложение фото
+            return self._extract_photo_url(content)  # Возвращаем лучший URL фото
+        if att_type == "audio_message":  # Если аудиосообщение
+            return self._extract_audio_url(content)  # Возвращаем ссылку на аудио
+        if att_type == "doc":  # Если документ
+            return self._extract_doc_url(content)  # Возвращаем ссылку на документ
+        if att_type == "video":  # Если видео
+            return self._resolve_video_url(content)  # Пытаемся получить прямую ссылку видео
+        return None  # Возвращаем пустое значение по умолчанию
+
+    def _build_local_path(self, peer_id: Optional[int], message_id: Optional[int], url: str, attachment_type: str) -> Path:
+        parsed = urlparse(url)  # Парсим URL для выделения имени файла
+        filename = Path(parsed.path).name  # Пытаемся взять имя файла из пути
+        base_name = self._sanitize_filename(filename, f"file_{attachment_type}")  # Очищаем имя файла
+        target_folder = self.attachments_dir / str(peer_id or "unknown_peer") / str(message_id or "unknown_message")  # Формируем вложенную директорию
+        target_folder.mkdir(parents=True, exist_ok=True)  # Создаем вложенные директории
+        return target_folder / base_name  # Возвращаем полный путь до файла
+
+    def _download_file(self, url: str, target_path: Path) -> Optional[Path]:
+        try:  # Пробуем скачать файл
+            response = requests.get(url, timeout=30, stream=True)  # Выполняем HTTP-запрос с таймаутом
+            response.raise_for_status()  # Бросаем исключение при ошибке статуса
+            with target_path.open("wb") as file_handle:  # Открываем файл для записи
+                for chunk in response.iter_content(chunk_size=8192):  # Читаем ответ блоками
+                    if not chunk:  # Пропускаем пустые блоки
+                        continue  # Переходим к следующему блоку
+                    file_handle.write(chunk)  # Записываем блок в файл
+            return target_path  # Возвращаем путь к сохраненному файлу
+        except Exception as exc:  # Обрабатываем ошибки скачивания
+            logger.warning("Не удалось сохранить вложение %s: %s", url, exc)  # Пишем предупреждение в лог
+            return None  # Возвращаем пустое значение при ошибке
+
+    def _normalize_attachment(self, attachment: Dict, peer_id: Optional[int], message_id: Optional[int]) -> Dict:
+        normalized = dict(attachment) if isinstance(attachment, dict) else {}  # Копируем вложение, чтобы не трогать оригинал
+        att_type = normalized.get("type")  # Получаем тип вложения
+        download_url = self._pick_attachment_url(normalized)  # Пытаемся извлечь прямую ссылку
+        normalized["local_path"] = None  # Подготавливаем поле для пути
+        normalized["download_url"] = download_url  # Сохраняем URL в явном виде
+        normalized["transcript"] = normalized.get("transcript")  # Резерв для будущей расшифровки аудио
+        if download_url:  # Если удалось получить ссылку
+            target_path = self._build_local_path(peer_id, message_id, download_url, att_type or "file")  # Формируем путь сохранения
+            saved_path = self._download_file(download_url, target_path)  # Пытаемся скачать файл
+            if saved_path:  # Проверяем успешность сохранения
+                normalized["local_path"] = str(saved_path)  # Сохраняем путь к файлу
+        return normalized  # Возвращаем нормализованное вложение
+
+    def _save_attachments(self, attachments: List[Dict], peer_id: Optional[int], message_id: Optional[int]) -> List[Dict]:
+        normalized_list: List[Dict] = []  # Готовим список нормализованных вложений
+        if not isinstance(attachments, list):  # Проверяем формат входных данных
+            return normalized_list  # Возвращаем пустой список при неверном формате
+        for attachment in attachments:  # Перебираем вложения
+            normalized_list.append(self._normalize_attachment(attachment, peer_id, message_id))  # Сохраняем каждое вложение
+        return normalized_list  # Возвращаем список с локальными путями
 
     def start(self) -> None:
         listener_thread = threading.Thread(target=self._listen, daemon=True)  # Создаем фоновый поток
@@ -522,6 +631,9 @@ class BotMonitor:
                             reply_message["from_name"] = reply_profile.get("name")  # Добавляем имя автора исходного сообщения
                             reply_message["from_avatar"] = reply_profile.get("avatar")  # Добавляем аватар автора исходного сообщения
                             message["reply_message"] = reply_message  # Обновляем исходный payload VK для дальнейшей записи
+                        message["attachments"] = self._save_attachments(message.get("attachments", []), message.get("peer_id"), message.get("id"))  # Сохраняем вложения на диск и добавляем локальные пути
+                        if isinstance(reply_message, dict):  # Проверяем, что есть вложения в исходном сообщении
+                            reply_message["attachments"] = self._save_attachments(reply_message.get("attachments", []), message.get("peer_id"), reply_message.get("id"))  # Сохраняем вложения исходного сообщения
                         payload = {  # Собираем полезные данные для метрик
                             "id": message.get("id"),  # ID сообщения
                             "from_id": message.get("from_id"),  # ID отправителя
