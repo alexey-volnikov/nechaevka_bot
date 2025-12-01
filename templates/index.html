@@ -53,6 +53,21 @@
       </div> <!-- Конец верхней строки героя -->
     </div> <!-- Конец героя -->
 
+    <div class="glass shadow-soft p-4 mb-4"> <!-- Блок выбора чата -->
+      <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3"> <!-- Контейнер -->
+        <div> <!-- Левая колонка -->
+          <div class="card-title mb-1">Источник данных</div> <!-- Заголовок -->
+          <div class="text-secondary small">Выберите конкретный peer_id или смотрите сразу все сообщения.</div> <!-- Подпись -->
+        </div> <!-- Конец левой колонки -->
+        <div class="d-flex flex-column flex-md-row gap-2 align-items-md-center"> <!-- Контейнер селектора -->
+          <label class="text-secondary small mb-0" for="peer-select">Фильтр по чату</label> <!-- Подпись селектора -->
+          <select id="peer-select" class="form-select bg-dark text-light border-secondary" style="min-width: 240px"> <!-- Селектор чатов -->
+            <option value="">Все чаты</option> <!-- Опция по умолчанию -->
+          </select> <!-- Конец селектора -->
+        </div> <!-- Конец контейнера селектора -->
+      </div> <!-- Конец контейнера -->
+    </div> <!-- Конец блока выбора чата -->
+
     <div class="row g-4 mb-4"> <!-- Строка метрик -->
       <div class="col-12 col-md-3"> <!-- Колонка событий -->
         <div class="glass p-4 shadow-soft h-100"> <!-- Карточка -->
@@ -127,12 +142,14 @@
                 <tr>
                   <th>peer_id</th> <!-- Заголовок столбца -->
                   <th>from_id</th> <!-- Заголовок столбца -->
+                  <th>Ответ на</th> <!-- Заголовок столбца -->
+                  <th>Вложения</th> <!-- Заголовок столбца -->
                   <th>Текст</th> <!-- Заголовок столбца -->
                 </tr>
               </thead>
               <tbody id="messages-body"> <!-- Тело таблицы -->
                 <tr>
-                  <td colspan="3" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
+                  <td colspan="5" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
                 </tr>
               </tbody>
             </table> <!-- Конец таблицы -->
@@ -185,6 +202,7 @@
     const initialStats = JSON.parse('{{ initial_stats|safe }}'); // Читаем стартовые метрики из шаблона
     const initialGroup = JSON.parse('{{ initial_group|safe }}'); // Читаем информацию о сообществе
     const initialConversations = JSON.parse('{{ initial_conversations|safe }}'); // Читаем список диалогов
+    const initialPeers = JSON.parse('{{ initial_peers|safe }}'); // Читаем стартовый список peer_id
     const demoMode = {{ 'true' if demo_mode else 'false' }}; // Флаг демо-режима
 
     const eventsEl = document.getElementById('events-count'); // Находим элемент событий
@@ -197,6 +215,8 @@
     const groupIdEl = document.getElementById('group-id'); // ID сообщества
     const groupMembersEl = document.getElementById('group-members'); // Количество участников
     const demoBadge = document.getElementById('demo-badge'); // Бейдж демо
+    const peerSelect = document.getElementById('peer-select'); // Селектор чатов
+    let currentPeer = ''; // Текущий выбранный peer_id
 
     if (demoMode) { // Если включен демо-режим
       demoBadge.style.display = 'inline-flex'; // Показываем бейдж демо
@@ -231,14 +251,32 @@
     function renderMessages(messages) { // Функция отрисовки сообщений
       messagesBody.innerHTML = ''; // Очищаем тело таблицы
       if (!messages.length) { // Если пусто
-        messagesBody.innerHTML = '<tr><td colspan="3" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
+        messagesBody.innerHTML = '<tr><td colspan="5" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
         return; // Выходим
       } // Конец проверки пустоты
       messages.slice().reverse().forEach((msg) => { // Перебираем сообщения в обратном порядке
         const row = document.createElement('tr'); // Создаем строку
-        row.innerHTML = `<td>${msg.peer_id ?? '—'}</td><td>${msg.from_id ?? '—'}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки
+        const attachments = Array.isArray(msg.attachments) ? msg.attachments.length : 0; // Считаем вложения
+        row.innerHTML = `<td>${msg.peer_id ?? '—'}</td><td>${msg.from_id ?? '—'}</td><td>${msg.reply_to ?? '—'}</td><td>${attachments}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки
         messagesBody.appendChild(row); // Добавляем строку в таблицу
       }); // Конец цикла
+    } // Конец функции
+
+    function renderPeers(peers) { // Функция отрисовки списка чатов
+      const uniquePeers = Array.from(new Set(peers || [])).filter((p) => Number.isFinite(p)); // Убираем дубликаты
+      peerSelect.innerHTML = '<option value="">Все чаты</option>'; // Сбрасываем список
+      uniquePeers.forEach((peer) => { // Перебираем чаты
+        const option = document.createElement('option'); // Создаем опцию
+        option.value = peer; // Значение
+        option.textContent = peer; // Текст
+        peerSelect.appendChild(option); // Добавляем в селектор
+      }); // Конец цикла
+      if (currentPeer && uniquePeers.includes(Number(currentPeer))) { // Если выбранный чат все еще существует
+        peerSelect.value = currentPeer; // Возвращаем выбор
+      } else { // Если выбора нет
+        currentPeer = ''; // Сбрасываем фильтр
+        peerSelect.value = ''; // Возвращаем опцию по умолчанию
+      } // Конец условия
     } // Конец функции
 
     function renderConversations(convs) { // Функция отрисовки диалогов
@@ -262,7 +300,6 @@
       messagesEl.textContent = stats.messages; // Обновляем количество сообщений
       invitesEl.textContent = stats.invites; // Обновляем количество приглашений
       errorsEl.textContent = stats.errors; // Обновляем количество ошибок
-      renderMessages(stats.last_messages || []); // Обновляем таблицу сообщений
       chart.data.labels = stats.timeline.map((p) => p.time); // Обновляем метки графика
       chart.data.datasets[0].data = stats.timeline.map((p) => p.events); // Обновляем линию событий
       chart.data.datasets[1].data = stats.timeline.map((p) => p.messages); // Обновляем линию сообщений
@@ -273,21 +310,31 @@
     function bootstrapPage() { // Инициализация страницы
       renderGroup(initialGroup || {}); // Показываем данные сообщества
       renderConversations(initialConversations || []); // Показываем диалоги
+      renderPeers(initialPeers || []); // Показываем стартовые peer_id
       updateMetrics(initialStats || { timeline: [] }); // Показываем метрики
     } // Конец функции
 
     async function poll() { // Функция периодического опроса
       try { // Пытаемся отправить запрос
-        const [statsRes, overviewRes] = await Promise.all([fetch('/api/stats'), fetch('/api/overview')]); // Запрашиваем статистику и обзор
+        const logsUrl = currentPeer ? `/api/logs?peer_id=${currentPeer}` : '/api/logs'; // Формируем URL логов
+        const [statsRes, overviewRes, logsRes] = await Promise.all([fetch('/api/stats'), fetch('/api/overview'), fetch(logsUrl)]); // Запрашиваем статистику, обзор и логи
         const stats = await statsRes.json(); // Читаем JSON статистики
         const overview = await overviewRes.json(); // Читаем JSON обзора
+        const logs = await logsRes.json(); // Читаем JSON логов
         updateMetrics(stats); // Обновляем метрики
         renderGroup(overview.group || {}); // Обновляем информацию о сообществе
         renderConversations(overview.conversations || []); // Обновляем диалоги
+        renderPeers(overview.peers || []); // Обновляем список чатов
+        renderMessages(logs.items || []); // Обновляем таблицу сообщений
       } catch (err) { // В случае ошибки
         console.error('Ошибка обновления дашборда', err); // Пишем ошибку в консоль
       } // Конец обработки ошибки
     } // Конец функции
+
+    peerSelect.addEventListener('change', () => { // Реагируем на выбор чата
+      currentPeer = peerSelect.value; // Сохраняем выбранный peer_id
+      poll(); // Перезапрашиваем данные
+    }); // Конец обработчика
 
     bootstrapPage(); // Запускаем инициализацию
     setInterval(poll, 3000); // Опрос каждые 3 секунды
