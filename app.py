@@ -980,6 +980,23 @@ def build_dashboard_app(
             enriched.append(item)  # Добавляем нормализованное вложение в список
         return enriched  # Возвращаем итоговый список
 
+    def count_attachments(attachments: object) -> int:  # Подсчитывает количество вложений в списке
+        if not isinstance(attachments, list):  # Проверяем корректность формата входных данных
+            return 0  # Возвращаем 0, если данные некорректны
+        return sum(1 for att in attachments if isinstance(att, dict))  # Считаем только словари вложений
+
+    def count_copy_history_attachments(entries: object) -> int:  # Рекурсивно считает вложения в репостах
+        if not isinstance(entries, list):  # Проверяем формат copy_history
+            return 0  # Возвращаем 0 при ошибке формата
+        total = 0  # Инициализируем счетчик вложений
+        for entry in entries:  # Перебираем каждый репост
+            if not isinstance(entry, dict):  # Проверяем тип записи
+                continue  # Пропускаем некорректные элементы
+            total += count_attachments(entry.get("attachments"))  # Добавляем вложения самого репоста
+            nested = entry.get("copy_history")  # Получаем вложенный copy_history
+            total += count_copy_history_attachments(nested) if nested else 0  # Добавляем вложения вложенных репостов
+        return total  # Возвращаем итоговое количество вложений
+
     def serialize_copy_history(entries: object) -> List[Dict]:  # Рекурсивно нормализует репосты и их вложения
         prepared: List[Dict] = []  # Готовим список репостов
         if not isinstance(entries, list):  # Проверяем формат входных данных
@@ -1053,6 +1070,7 @@ def build_dashboard_app(
             "text": row.get("text"),  # Текст
             "attachments": attachments,  # Вложения с публичными ссылками
             "copy_history": copy_history,  # Репосты с вложениями
+            "attachments_total": len(attachments) + count_copy_history_attachments(copy_history),  # Общее количество вложений в сообщении и репостах
             "payload": raw_payload,  # Сырой payload
         }  # Конец словаря лога
 

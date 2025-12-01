@@ -49,6 +49,28 @@ class EventLoggerAttachmentsTest(unittest.TestCase):  # Определяем т�
         self.assertEqual(len(stored_attachments), 9)  # Убеждаемся, что все девять вложений присутствуют
         self.assertTrue(all(att.get("url") for att in stored_attachments))  # Проверяем, что у каждого есть ссылка
 
+    def test_payload_keeps_all_attachments_for_gallery(self):  # Проверяем, что payload сохраняет все вложения для галереи
+        payload = {  # Формируем payload с вложениями и репостом
+            "peer_id": 7,  # ID чата
+            "from_id": 789,  # Автор сообщения
+            "id": 202,  # ID сообщения
+            "attachments": [  # Вложения основного сообщения
+                {"type": "photo", "url": "http://example.com/a.jpg"},  # Первое вложение
+                {"type": "photo", "url": "http://example.com/b.jpg"},  # Второе вложение
+                {"type": "photo", "url": "http://example.com/c.jpg"},  # Третье вложение
+            ],  # Завершаем список вложений
+            "copy_history": [  # Добавляем репост
+                {"attachments": [{"type": "doc", "url": "http://example.com/file.pdf"}]},  # Репост с документом
+            ],  # Завершаем copy_history
+        }  # Завершаем формирование payload
+        self.logger.log_event("message", payload)  # Сохраняем событие в базу
+        row = self.logger.fetch_messages(limit=1)[0]  # Забираем свежую запись из базы
+        stored_payload = json.loads(row["payload"])  # Десериализуем сохраненный payload
+        self.assertEqual(len(stored_payload.get("attachments", [])), 3)  # Проверяем, что все три вложения основного сообщения сохранены
+        self.assertEqual(len(stored_payload.get("copy_history", [])), 1)  # Проверяем, что репост сохранен
+        nested_attachments = stored_payload.get("copy_history", [])[0].get("attachments", [])  # Извлекаем вложения из репоста
+        self.assertEqual(len(nested_attachments), 1)  # Убеждаемся, что вложение репоста присутствует
+
 
 if __name__ == "__main__":  # Точка входа для запуска файла напрямую
     unittest.main()  # Запускаем тестовый раннер
