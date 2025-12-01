@@ -145,7 +145,10 @@ class EventLogger:
                     from_id INTEGER,
                     from_name TEXT,
                     message_id INTEGER,
-                    reply_to INTEGER,
+                    reply_message_id INTEGER,
+                    reply_from_id INTEGER,
+                    reply_from_name TEXT,
+                    reply_text TEXT,
                     is_bot INTEGER DEFAULT 0,
                     text TEXT,
                     attachments TEXT,
@@ -161,6 +164,14 @@ class EventLogger:
                 cursor.execute("ALTER TABLE events ADD COLUMN peer_title TEXT")  # Добавляем поле для названия чата
             if "from_name" not in columns:  # Если нет колонки для имени автора
                 cursor.execute("ALTER TABLE events ADD COLUMN from_name TEXT")  # Добавляем поле для имени отправителя
+            if "reply_message_id" not in columns:  # Если нет колонки для ID исходного сообщения
+                cursor.execute("ALTER TABLE events ADD COLUMN reply_message_id INTEGER")  # Добавляем колонку для ID ответа
+            if "reply_from_id" not in columns:  # Если нет колонки для автора исходного сообщения
+                cursor.execute("ALTER TABLE events ADD COLUMN reply_from_id INTEGER")  # Добавляем колонку автора исходного сообщения
+            if "reply_from_name" not in columns:  # Если нет колонки для имени автора исходного сообщения
+                cursor.execute("ALTER TABLE events ADD COLUMN reply_from_name TEXT")  # Добавляем колонку имени автора исходного сообщения
+            if "reply_text" not in columns:  # Если нет колонки для текста исходного сообщения
+                cursor.execute("ALTER TABLE events ADD COLUMN reply_text TEXT")  # Добавляем колонку текста исходного сообщения
             self._connection.commit()  # Сохраняем изменения
 
     def describe_storage(self) -> Dict[str, object]:
@@ -175,7 +186,11 @@ class EventLogger:
         peer_id = payload.get("peer_id")  # Берем ID чата
         from_id = payload.get("from_id")  # Берем автора
         message_id = payload.get("id")  # Берем ID сообщения
-        reply_to = payload.get("reply_message", {}).get("from_id") if isinstance(payload.get("reply_message"), dict) else None  # Берем ID адресата ответа
+        reply_message = payload.get("reply_message") if isinstance(payload.get("reply_message"), dict) else None  # Получаем словарь ответа, если он есть
+        reply_message_id = reply_message.get("id") if isinstance(reply_message, dict) else None  # Берем ID исходного сообщения
+        reply_from_id = reply_message.get("from_id") if isinstance(reply_message, dict) else None  # Берем автора исходного сообщения
+        reply_from_name = reply_message.get("from_name") if isinstance(reply_message, dict) else None  # Берем имя автора исходного сообщения
+        reply_text = reply_message.get("text") if isinstance(reply_message, dict) else None  # Берем текст исходного сообщения
         text = payload.get("text")  # Берем текст
         attachments = payload.get("attachments", [])  # Берем вложения
         is_bot = 1 if isinstance(from_id, int) and from_id < 0 else 0  # Фиксируем, что автор — бот или сообщество
@@ -183,8 +198,8 @@ class EventLogger:
             cursor = self._connection.cursor()  # Получаем курсор
             cursor.execute(  # Выполняем вставку строки
                 """
-                INSERT INTO events (created_at, event_type, peer_id, peer_title, from_id, from_name, message_id, reply_to, is_bot, text, attachments, payload)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO events (created_at, event_type, peer_id, peer_title, from_id, from_name, message_id, reply_message_id, reply_from_id, reply_from_name, reply_text, is_bot, text, attachments, payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     created_at,  # Время вставки
@@ -194,7 +209,10 @@ class EventLogger:
                     from_id,  # Автор
                     from_name,  # Имя автора
                     message_id,  # ID сообщения
-                    reply_to,  # Кому отвечали
+                    reply_message_id,  # ID исходного сообщения, на которое ответили
+                    reply_from_id,  # Автор исходного сообщения
+                    reply_from_name,  # Имя автора исходного сообщения
+                    reply_text,  # Текст исходного сообщения
                     is_bot,  # Флаг автора-бота
                     text,  # Текст
                     json.dumps(attachments, ensure_ascii=False),  # Сериализуем вложения
@@ -422,6 +440,12 @@ class BotMonitor:
                         message = event.object.message  # Извлекаем тело сообщения
                         sender_name = self._resolve_sender_name(message.get("from_id"))  # Находим имя отправителя
                         peer_title = self._resolve_peer_title(message.get("peer_id"), sender_name)  # Находим название чата
+                        reply_payload = message.get("reply_message") if isinstance(message.get("reply_message"), dict) else None  # Получаем ответное сообщение, если оно есть
+                        if isinstance(reply_payload, dict):  # Проверяем, что ответ содержит словарь
+                            reply_from_id = reply_payload.get("from_id")  # Берем ID автора исходного сообщения
+                            reply_from_name = self._resolve_sender_name(reply_from_id) if reply_from_id is not None else None  # Пытаемся найти имя автора исходного сообщения
+                            if reply_from_name:  # Если имя найдено
+                                reply_payload["from_name"] = reply_from_name  # Сохраняем имя в payload ответа
                         payload = {  # Собираем полезные данные для метрик
                             "id": message.get("id"),  # ID сообщения
                             "from_id": message.get("from_id"),  # ID отправителя
@@ -662,7 +686,10 @@ def build_dashboard_app(
             "from_id": row.get("from_id"),  # Автор
             "from_name": row.get("from_name"),  # Имя автора
             "message_id": row.get("message_id"),  # ID сообщения VK
-            "reply_to": row.get("reply_to"),  # Кому ответили
+            "reply_message_id": row.get("reply_message_id"),  # ID исходного сообщения
+            "reply_from_id": row.get("reply_from_id"),  # Автор исходного сообщения
+            "reply_from_name": row.get("reply_from_name"),  # Имя автора исходного сообщения
+            "reply_text": row.get("reply_text"),  # Текст исходного сообщения
             "is_bot": row.get("is_bot", 0),  # Флаг, что автор — бот или сообщество
             "text": row.get("text"),  # Текст
             "attachments": json.loads(row.get("attachments") or "[]"),  # Вложения
