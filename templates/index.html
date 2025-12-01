@@ -185,7 +185,7 @@
                   <th>Чат</th> <!-- Заголовок столбца -->
                   <th>Отправитель</th> <!-- Заголовок столбца -->
                   <th>Бот?</th> <!-- Заголовок столбца для отметки бота -->
-                  <th>Ответ на</th> <!-- Заголовок столбца -->
+                  <th>Ответ</th> <!-- Заголовок столбца -->
                   <th>Вложения</th> <!-- Заголовок столбца -->
                   <th>Текст</th> <!-- Заголовок столбца -->
                 </tr>
@@ -334,6 +334,20 @@
       return safeLabel; // Если аватар отсутствует, возвращаем только текст
     } // Конец функции построения подписи
 
+    function buildReplyPreview(reply, peerId) { // Функция сборки ячейки ответа
+      if (!reply || (!reply.id && !reply.text && !reply.from_id)) { // Проверяем наличие полезных данных
+        return '<span class="text-secondary">—</span>'; // Возвращаем плейсхолдер при отсутствии ответа
+      } // Конец проверки наличия ответа
+      const replyId = reply.id ?? '—'; // Определяем ID исходного сообщения
+      const replyText = reply.text ? reply.text.slice(0, 120) : 'Без текста'; // Готовим превью текста
+      const replyAuthorLabel = reply.from_name ? `${reply.from_name} (ID: ${reply.from_id ?? '—'})` : reply.from_id ? `ID: ${reply.from_id}` : 'Автор неизвестен'; // Формируем подпись автора ответа
+      const replyAuthorCell = buildAvatarLabel(replyAuthorLabel, reply.from_avatar); // Готовим подпись автора с аватаркой
+      const replyLink = reply.id && peerId ? `<a href="https://vk.com/im?sel=${peerId}&msgid=${reply.id}" target="_blank" rel="noopener noreferrer">#${reply.id}</a>` : `#${replyId}`; // Собираем ссылку на исходное сообщение
+      const replyAttachmentsCount = Array.isArray(reply.attachments) ? reply.attachments.length : 0; // Считаем вложения исходного сообщения
+      const replyAttachmentsLabel = replyAttachmentsCount ? `${replyAttachmentsCount} влож.` : 'Без вложений'; // Формируем подпись вложений
+      return `<div class="d-flex flex-column gap-1"><div class="d-flex align-items-center gap-2">${replyLink}<span class="text-secondary small">${replyAttachmentsLabel}</span></div><div class="text-secondary small">${replyText}</div><div class="text-secondary small">${replyAuthorCell}</div></div>`; // Возвращаем HTML ячейки
+    } // Конец функции сборки ответа
+
     function renderMessages(messages) { // Функция отрисовки сообщений
       messagesBody.innerHTML = ''; // Очищаем тело таблицы
       if (!messages.length) { // Если пусто
@@ -348,7 +362,8 @@
         const authorLabel = msg.from_name ? `${msg.from_name} (ID: ${msg.from_id ?? '—'})` : `${msg.from_id ?? '—'}`; // Формируем подпись автора
         const peerCell = buildAvatarLabel(peerLabel, msg.peer_avatar); // Готовим ячейку чата с аватаркой
         const authorCell = buildAvatarLabel(authorLabel, msg.from_avatar); // Готовим ячейку автора с аватаркой
-        row.innerHTML = `<td>${peerCell}</td><td>${authorCell}</td><td>${botBadge}</td><td>${msg.reply_to ?? '—'}</td><td>${attachments}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки
+        const replyCell = buildReplyPreview(msg.reply, msg.peer_id); // Готовим ячейку превью исходного сообщения
+        row.innerHTML = `<td>${peerCell}</td><td>${authorCell}</td><td>${botBadge}</td><td>${replyCell}</td><td>${attachments}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки
         messagesBody.appendChild(row); // Добавляем строку в таблицу
       }); // Конец цикла
     } // Конец функции
