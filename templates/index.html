@@ -455,24 +455,39 @@
       }); // Конец перебора вложений
     } // Конец функции сборки вложений
 
-    function extractAttachments(message) { // Извлекаем вложения из основного блока или сырого payload
-      if (Array.isArray(message?.attachments) && message.attachments.length) { // Проверяем, что в сообщении есть вложения
-        return message.attachments; // Возвращаем вложения сообщения
-      } // Конец проверки
-      if (message?.payload && Array.isArray(message.payload.attachments) && message.payload.attachments.length) { // Проверяем, что вложения лежат в payload
-        return message.payload.attachments; // Возвращаем вложения из payload
-      } // Конец проверки payload
-      return []; // Возвращаем пустой список, если вложений нет
+    function mergeAttachmentLists(primary, fallback) { // Объединяем вложения из основного блока и payload без дублей
+      const result = []; // Итоговый массив объединенных вложений
+      const seen = new Set(); // Набор ключей для устранения дублей
+      const pushUnique = (item) => { // Вспомогательная функция добавления элемента
+        if (!item || typeof item !== 'object') { // Проверяем корректность вложения
+          return; // Пропускаем некорректные элементы
+        } // Конец проверки
+        const signature = item.public_url || item.download_url || item.url || JSON.stringify(item); // Формируем сигнатуру для выявления дублей
+        if (seen.has(signature)) { // Проверяем, был ли элемент уже добавлен
+          return; // Пропускаем дубликат
+        } // Конец проверки дубля
+        seen.add(signature); // Добавляем сигнатуру в набор
+        result.push(item); // Кладем вложение в итоговый список
+      }; // Конец вспомогательной функции
+      if (Array.isArray(primary)) { // Проверяем основной список вложений
+        primary.forEach(pushUnique); // Добавляем каждый элемент из основного списка
+      } // Конец проверки основного списка
+      if (Array.isArray(fallback)) { // Проверяем запасной список из payload
+        fallback.forEach(pushUnique); // Добавляем вложения из payload
+      } // Конец проверки fallback
+      return result; // Возвращаем объединенный список
+    } // Конец функции объединения списков вложений
+
+    function extractAttachments(message) { // Извлекаем и объединяем вложения из основного блока и payload
+      const primary = Array.isArray(message?.attachments) ? message.attachments : []; // Забираем вложения сообщения
+      const fallback = message?.payload && Array.isArray(message.payload.attachments) ? message.payload.attachments : []; // Забираем вложения из payload
+      return mergeAttachmentLists(primary, fallback); // Возвращаем объединенный список без дублей
     } // Конец функции извлечения вложений
 
     function extractCopyHistory(message) { // Извлекаем copy_history из сообщения или payload
-      if (Array.isArray(message?.copy_history) && message.copy_history.length) { // Проверяем copy_history в сообщении
-        return message.copy_history; // Возвращаем найденный список
-      } // Конец проверки сообщения
-      if (message?.payload && Array.isArray(message.payload.copy_history) && message.payload.copy_history.length) { // Проверяем copy_history в payload
-        return message.payload.copy_history; // Возвращаем репосты из payload
-      } // Конец проверки payload
-      return []; // Возвращаем пустой список при отсутствии данных
+      const primary = Array.isArray(message?.copy_history) ? message.copy_history : []; // Основной список репостов
+      const fallback = message?.payload && Array.isArray(message.payload.copy_history) ? message.payload.copy_history : []; // Запасной список из payload
+      return [...primary, ...fallback].filter((entry) => entry && typeof entry === 'object'); // Объединяем списки и фильтруем корректные объекты
     } // Конец функции извлечения copy_history
 
     function countAttachmentList(list) { // Считает количество вложений в списке
