@@ -53,6 +53,19 @@
       </div> <!-- Конец верхней строки героя -->
     </div> <!-- Конец героя -->
 
+    <div class="glass shadow-soft p-4 mb-4"> <!-- Блок важных сообщений -->
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-3"> <!-- Контейнер заголовка -->
+        <div> <!-- Левая часть блока -->
+          <div class="card-title mb-1">Важные сообщения</div> <!-- Заголовок блока -->
+          <div class="text-secondary small">Ошибки и предупреждения сервисных процессов.</div> <!-- Подпись -->
+        </div> <!-- Конец левой части -->
+        <div class="d-flex align-items-center gap-2"> <!-- Правая часть -->
+          <span id="important-badge" class="badge bg-danger fs-6">0</span> <!-- Бейдж количества -->
+          <a href="/logs/full#service-alerts" class="btn btn-outline-light btn-sm">Перейти к оповещениям</a> <!-- Кнопка перехода -->
+        </div> <!-- Конец правой части -->
+      </div> <!-- Конец контейнера -->
+    </div> <!-- Конец блока важных сообщений -->
+
     <div class="glass shadow-soft p-4 mb-4"> <!-- Блок выбора чата -->
       <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3"> <!-- Контейнер -->
         <div> <!-- Левая колонка -->
@@ -240,6 +253,7 @@
     const storagePathEl = document.getElementById('storage-path'); // Путь до файла базы
     const storageSizeEl = document.getElementById('storage-size'); // Размер файла базы
     const storageStatusEl = document.getElementById('storage-status'); // Статус существования файла
+    const importantBadge = document.getElementById('important-badge'); // Бейдж важных оповещений
     let currentPeer = ''; // Текущий выбранный peer_id
 
     if (demoMode) { // Если включен демо-режим
@@ -349,27 +363,37 @@
       storageStatusEl.className = storage.exists ? 'text-success' : 'text-warning'; // Меняем цвет статуса
     } // Конец функции
 
+    function updateImportantBadge(count) { // Функция обновления бейджа важных сообщений
+      const safeCount = Number(count) || 0; // Нормализуем значение
+      importantBadge.textContent = safeCount; // Выводим число
+      importantBadge.className = safeCount > 0 ? 'badge bg-danger fs-6' : 'badge bg-secondary fs-6'; // Меняем цвет по наличию событий
+    } // Конец функции бейджа
+
     function bootstrapPage() { // Инициализация страницы
       renderGroup(initialGroup || {}); // Показываем данные сообщества
       renderConversations(initialConversations || []); // Показываем диалоги
       renderPeers(initialPeers || []); // Показываем стартовые peer_id
       updateMetrics(initialStats || { timeline: [] }); // Показываем метрики
       renderStorage(initialStorage || {}); // Показываем информацию о файле базы
+      updateImportantBadge(0); // Сбрасываем бейдж важных сообщений
     } // Конец функции
 
     async function poll() { // Функция периодического опроса
       try { // Пытаемся отправить запрос
         const logsUrl = currentPeer ? `/api/logs?peer_id=${currentPeer}` : '/api/logs'; // Формируем URL логов
-        const [statsRes, overviewRes, logsRes] = await Promise.all([fetch('/api/stats'), fetch('/api/overview'), fetch(logsUrl)]); // Запрашиваем статистику, обзор и логи
+        const alertsUrl = '/api/service-logs?event_type=important&limit=1'; // URL для важных оповещений
+        const [statsRes, overviewRes, logsRes, alertsRes] = await Promise.all([fetch('/api/stats'), fetch('/api/overview'), fetch(logsUrl), fetch(alertsUrl)]); // Запрашиваем статистику, обзор, логи и оповещения
         const stats = await statsRes.json(); // Читаем JSON статистики
         const overview = await overviewRes.json(); // Читаем JSON обзора
         const logs = await logsRes.json(); // Читаем JSON логов
+        const alerts = await alertsRes.json(); // Читаем JSON оповещений
         updateMetrics(stats); // Обновляем метрики
         renderGroup(overview.group || {}); // Обновляем информацию о сообществе
         renderConversations(overview.conversations || []); // Обновляем диалоги
         renderPeers(overview.peers || []); // Обновляем список чатов
         renderMessages(logs.items || []); // Обновляем таблицу сообщений
         renderStorage(overview.storage || initialStorage || {}); // Обновляем данные о файле базы
+        updateImportantBadge(alerts.total || 0); // Обновляем бейдж важных сообщений
       } catch (err) { // В случае ошибки
         console.error('Ошибка обновления дашборда', err); // Пишем ошибку в консоль
       } // Конец обработки ошибки

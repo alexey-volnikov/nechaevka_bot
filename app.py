@@ -18,6 +18,7 @@ load_dotenv()  # Инициализируем загрузку переменн�
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")  # Формат логов
 logger = logging.getLogger(__name__)  # Получаем логгер для текущего модуля
+service_event_logger = None  # Плейсхолдер для логгера сервисных событий в базе
 
 SERVICE_STATUS_EXPLANATIONS = {  # Справочник кодов статусов с пояснениями
     200: "Успех: запрос обработан корректно",  # Человекочитаемое описание коду 200
@@ -63,7 +64,9 @@ def log_service_event(status_code: int, message: str) -> None:  # Упрощен
     """Пишет важное сервисное событие с кодом и русским пояснением."""
 
     description = SERVICE_STATUS_EXPLANATIONS.get(status_code, "Сервисное сообщение")  # Находим пояснение по коду
-    service_logger.info(message, extra={"status_code": status_code, "status_description": description})  # Логируем событие
+    service_logger.info(message, extra={"status_code": status_code, "status_description": description})  # Логируем событие в файл
+    if service_event_logger is not None:  # Проверяем, инициализирован ли логгер базы
+        service_event_logger.log_event(status_code, description, message)  # Дублируем событие в базу с локальным временем
 
 
 service_logger = build_service_logger()  # Создаем отдельный сервисный логгер
@@ -215,6 +218,94 @@ class EventLogger:
             for row in rows  # Перебираем строки результата
             if row["peer_id"] is not None  # Фильтруем пустые значения
         ]
+
+
+class ServiceEventLogger:  # Логгер сервисных событий с отдельной таблицей
+    """Хранит сервисные оповещения с типом и пояснением."""
+
+    def __init__(self, db_path: str):
+        self.db_path = db_path  # Путь до файла базы
+        db_dir = os.path.dirname(self.db_path)  # Директория файла базы
+        if db_dir:  # Если путь включает директорию
+            os.makedirs(db_dir, exist_ok=True)  # Создаем директорию при необходимости
+        self._connection = sqlite3.connect(self.db_path, check_same_thread=False)  # Открываем соединение с разрешением мультипоточности
+        self._connection.row_factory = sqlite3.Row  # Включаем доступ к колонкам по имени
+        self._lock = threading.Lock()  # Создаем блокировку для потокобезопасных операций
+        self._ensure_schema()  # Создаем схему при инициализации
+
+    def _ensure_schema(self) -> None:
+        with self._lock:  # Начинаем защищенный доступ
+            cursor = self._connection.cursor()  # Берем курсор
+            cursor.execute(  # Создаем таблицу сервисных событий при отсутствии
+                """
+                CREATE TABLE IF NOT EXISTS service_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    status_code INTEGER NOT NULL,
+                    description TEXT,
+                    message TEXT
+                )
+                """
+            )
+            self._connection.commit()  # Сохраняем изменения схемы
+
+    def _classify_event(self, status_code: int) -> str:
+        if status_code >= 500:  # Ошибка сервера
+            return "error"  # Возвращаем тип ошибки
+        if status_code >= 400:  # Клиентское предупреждение
+            return "warning"  # Возвращаем тип предупреждения
+        return "info"  # По умолчанию информационный тип
+
+    def log_event(self, status_code: int, description: str, message: str) -> None:
+        created_at = datetime.now().astimezone().isoformat()  # Фиксируем локальное время с таймзоной
+        event_type = self._classify_event(status_code)  # Определяем тип события по коду
+        with self._lock:  # Начинаем защищенную запись
+            cursor = self._connection.cursor()  # Берем курсор
+            cursor.execute(  # Вставляем новую строку в таблицу
+                """
+                INSERT INTO service_events (created_at, event_type, status_code, description, message)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (created_at, event_type, status_code, description, message),
+            )
+            self._connection.commit()  # Сохраняем изменения
+
+    def fetch_events(self, event_type: Optional[str] = None, limit: int = 50, offset: int = 0) -> List[Dict]:
+        with self._lock:  # Начинаем защищенное чтение
+            cursor = self._connection.cursor()  # Берем курсор
+            base_query = "SELECT * FROM service_events"  # Базовый запрос
+            params: List[object] = []  # Список параметров
+            if event_type == "important":  # Если нужно вернуть важные события
+                base_query += " WHERE event_type IN ('warning', 'error')"  # Добавляем фильтр по типу
+            elif event_type:  # Если задан конкретный тип
+                base_query += " WHERE event_type = ?"  # Добавляем условие
+                params.append(event_type)  # Добавляем значение условия
+            base_query += " ORDER BY id DESC LIMIT ? OFFSET ?"  # Добавляем сортировку и пагинацию
+            params.extend([limit, offset])  # Добавляем лимит и смещение
+            cursor.execute(base_query, params)  # Выполняем запрос
+            rows = cursor.fetchall()  # Получаем результаты
+            return [dict(row) for row in rows]  # Возвращаем список словарей
+
+    def count_events(self, event_type: Optional[str] = None) -> int:
+        with self._lock:  # Начинаем защищенный доступ
+            cursor = self._connection.cursor()  # Берем курсор
+            base_query = "SELECT COUNT(*) FROM service_events"  # Базовый запрос подсчета
+            params: List[object] = []  # Параметры запроса
+            if event_type == "important":  # Фильтр важных событий
+                base_query += " WHERE event_type IN ('warning', 'error')"  # Ограничиваем типы
+            elif event_type:  # Фильтр конкретного типа
+                base_query += " WHERE event_type = ?"  # Добавляем условие
+                params.append(event_type)  # Добавляем значение параметра
+            cursor.execute(base_query, params)  # Выполняем запрос
+            result = cursor.fetchone()  # Получаем строку с количеством
+            return int(result[0]) if result else 0  # Возвращаем число
+
+    def clear_events(self) -> None:
+        with self._lock:  # Начинаем защищенную операцию
+            cursor = self._connection.cursor()  # Берем курсор
+            cursor.execute("DELETE FROM service_events")  # Удаляем все строки
+            self._connection.commit()  # Сохраняем изменения
 
 
 class BotMonitor:
@@ -390,7 +481,12 @@ def build_demo_payload(state: BotState, event_logger: EventLogger) -> Dict[str, 
 
 
 def build_dashboard_app(
-    state: BotState, group_info: Dict, conversations: List[Dict], demo_mode: bool, event_logger: EventLogger
+    state: BotState,
+    group_info: Dict,
+    conversations: List[Dict],
+    demo_mode: bool,
+    event_logger: EventLogger,
+    service_events: ServiceEventLogger,
 ) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")  # Создаем Flask-приложение
 
@@ -436,6 +532,16 @@ def build_dashboard_app(
 
     def assemble_storage() -> Dict[str, object]:
         return event_logger.describe_storage()  # Возвращаем информацию о файле базы
+
+    def serialize_service_event(row: Dict) -> Dict[str, object]:
+        return {
+            "id": row.get("id"),  # ID строки
+            "created_at": row.get("created_at"),  # Локальное время создания
+            "event_type": row.get("event_type"),  # Тип события (info/warning/error)
+            "status_code": row.get("status_code"),  # Код статуса
+            "description": row.get("description"),  # Русское пояснение
+            "message": row.get("message"),  # Текстовое сообщение
+        }  # Словарь с сервисным событием
 
     def serialize_log(row: Dict) -> Dict:
         return {
@@ -495,6 +601,27 @@ def build_dashboard_app(
         log_service_event(200, f"Отдаём JSON с логами peer_id={peer_id} и лимитом {limit}")  # Логируем успешную отдачу логов
         return jsonify({"items": messages, "peer_id": peer_id})  # Возвращаем JSON с логами
 
+    @app.route("/api/service-logs")
+    def service_logs():
+        event_type = request.args.get("event_type")  # Читаем тип события из запроса
+        limit_raw = request.args.get("limit")  # Читаем желаемый лимит
+        offset_raw = request.args.get("offset")  # Читаем смещение для пагинации
+        limit = int(limit_raw) if limit_raw else 50  # Преобразуем лимит в число
+        limit = max(1, min(limit, 200))  # Ограничиваем лимит разумными рамками
+        offset = int(offset_raw) if offset_raw else 0  # Преобразуем смещение
+        offset = max(0, offset)  # Не даем отрицательных смещений
+        rows = service_events.fetch_events(event_type=event_type, limit=limit, offset=offset)  # Получаем строки из базы
+        total = service_events.count_events(event_type=event_type)  # Считаем общее количество
+        payload = [serialize_service_event(row) for row in rows]  # Сериализуем события
+        log_service_event(200, f"Отдаём сервисные логи type={event_type} лимит={limit} смещение={offset}")  # Фиксируем отдачу
+        return jsonify({"items": payload, "total": total, "limit": limit, "offset": offset})  # Возвращаем JSON ответ
+
+    @app.route("/api/service-logs/clear", methods=["POST"])
+    def clear_service_logs():
+        service_events.clear_events()  # Очищаем таблицу сервисных событий
+        log_service_event(201, "Сервисные логи очищены через API")  # Фиксируем очистку
+        return jsonify({"status": "cleared"})  # Возвращаем подтверждение
+
     @app.route("/logs/full")
     def full_logs():
         peer_id_raw = request.args.get("peer_id")  # Читаем фильтр чата из адресной строки
@@ -503,6 +630,7 @@ def build_dashboard_app(
         limit = int(limit_raw) if limit_raw else 500  # Преобразуем лимит в число
         limit = max(1, min(limit, 1000))  # Ограничиваем лимит безопасными рамками
         logs_payload = [serialize_log(row) for row in event_logger.fetch_messages(peer_id=peer_id, limit=limit)]  # Получаем список логов
+        service_logs_payload = [serialize_service_event(row) for row in service_events.fetch_events(limit=50)]  # Получаем стартовые сервисные логи
         log_service_event(200, f"Отдаём HTML со всеми логами peer_id={peer_id} (лимит {limit})")  # Фиксируем выдачу страницы логов
         return render_template(
             "logs.html",  # Шаблон страницы логов
@@ -510,6 +638,7 @@ def build_dashboard_app(
             initial_peers=event_logger.list_peers(),  # Доступные чаты для фильтрации
             initial_peer_id=peer_id,  # Текущий выбранный чат
             initial_limit=limit,  # Текущий выбранный лимит
+            initial_service_logs=service_logs_payload,  # Стартовый набор сервисных логов
         )  # Возвращаем HTML страницы
 
     @app.route("/api/storage")
@@ -521,7 +650,9 @@ def build_dashboard_app(
 
 
 def main() -> None:
+    global service_event_logger  # Сообщаем, что будем обновлять глобальный логгер сервисных событий
     settings = load_settings()  # Загружаем настройки окружения
+    service_event_logger = ServiceEventLogger(os.getenv("EVENT_DB", resolve_db_path()))  # Создаем логгер сервисных событий в базе
     log_service_event(200, "Настройки окружения загружены")  # Фиксируем успешную загрузку настроек
     state = BotState()  # Создаем объект состояния
     event_logger = EventLogger(os.getenv("EVENT_DB", resolve_db_path()))  # Готовим логгер с путём из окружения или по умолчанию
@@ -550,7 +681,7 @@ def main() -> None:
             conversations = []  # Используем пустой список
         monitor = BotMonitor(settings["token"], settings["group_id"], state, event_logger)  # Создаем монитор лонгпулла
         monitor.start()  # Запускаем лонгпулл
-    app = build_dashboard_app(state, group_info, conversations, demo_mode, event_logger)  # Создаем Flask-приложение
+    app = build_dashboard_app(state, group_info, conversations, demo_mode, event_logger, service_event_logger)  # Создаем Flask-приложение
     port = int(os.getenv("PORT", "8000"))  # Определяем порт из окружения
     logger.info("Дашборд запущен на http://127.0.0.1:%s", port)  # Сообщаем адрес запуска
     log_service_event(200, f"Дашборд поднят на порту {port}")  # Фиксируем успешный старт веб-сервера
