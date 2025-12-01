@@ -58,6 +58,9 @@ class EventLogger:
 
     def __init__(self, db_path: str):
         self.db_path = db_path  # Путь до файла базы
+        db_dir = os.path.dirname(self.db_path)  # Вычисляем директорию файла базы
+        if db_dir:  # Если путь включает директорию
+            os.makedirs(db_dir, exist_ok=True)  # Создаем директорию при необходимости
         self._connection = sqlite3.connect(self.db_path, check_same_thread=False)  # Открываем соединение с разрешением мультипоточности
         self._connection.row_factory = sqlite3.Row  # Включаем доступ к полям по имени
         self._lock = threading.Lock()  # Создаем блокировку для потокобезопасных операций
@@ -88,6 +91,13 @@ class EventLogger:
             if "is_bot" not in columns:  # Если колонки для флага бота нет
                 cursor.execute("ALTER TABLE events ADD COLUMN is_bot INTEGER DEFAULT 0")  # Добавляем колонку миграцией
             self._connection.commit()  # Сохраняем изменения
+
+    def describe_storage(self) -> Dict[str, object]:
+        return {
+            "path": self.db_path,  # Путь до файла базы
+            "exists": os.path.exists(self.db_path),  # Флаг существования файла
+            "size_bytes": os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0,  # Размер файла в байтах
+        }  # Словарь с описанием хранилища
 
     def log_event(self, event_type: str, payload: Dict) -> None:
         created_at = datetime.utcnow().isoformat()  # Фиксируем время вставки
@@ -198,6 +208,12 @@ class BotMonitor:
         self._stop_event.set()  # Устанавливаем флаг остановки потока
 
 
+def resolve_db_path() -> str:
+    base_dir = os.getenv("EVENT_DB_DIR") or os.path.join(os.getcwd(), "data")  # Определяем директорию для базы
+    os.makedirs(base_dir, exist_ok=True)  # Создаем директорию хранения, если её нет
+    return os.path.join(base_dir, os.getenv("EVENT_DB_NAME", "logs.db"))  # Собираем итоговый путь с именем файла
+
+
 def load_settings() -> Dict[str, object]:
     demo_mode = os.getenv("DEMO_MODE", "0") == "1"  # Проверяем, включен ли демо-режим
     if demo_mode:  # Если демо включен
@@ -263,6 +279,9 @@ def build_dashboard_app(
             "timeline": state.events_timeline,  # Точки для графиков
         }  # Словарь статистики
 
+    def assemble_storage() -> Dict[str, object]:
+        return event_logger.describe_storage()  # Возвращаем информацию о файле базы
+
     def serialize_log(row: Dict) -> Dict:
         return {
             "id": row.get("id"),  # ID записи
@@ -289,6 +308,7 @@ def build_dashboard_app(
             ),
             initial_stats=json.dumps(assemble_stats(), ensure_ascii=False),  # Начальные метрики
             initial_peers=json.dumps(event_logger.list_peers(), ensure_ascii=False),  # Доступные peer_id
+            initial_storage=json.dumps(assemble_storage(), ensure_ascii=False),  # Описание файла базы для подсказки
             demo_mode=demo_mode,  # Флаг демо для вывода на страницу
         )  # Возвращаем HTML страницу
 
@@ -303,6 +323,7 @@ def build_dashboard_app(
                 "group": group_info,  # Информация о сообществе
                 "conversations": [conv.get("conversation", {}) for conv in conversations],  # Список диалогов
                 "peers": event_logger.list_peers(),  # Список доступных чатов
+                "storage": assemble_storage(),  # Описание файла базы
             }
         )  # Возвращаем обзорную информацию
 
@@ -313,13 +334,17 @@ def build_dashboard_app(
         messages = [serialize_log(row) for row in event_logger.fetch_messages(peer_id=peer_id, limit=50)]  # Запрашиваем логи
         return jsonify({"items": messages, "peer_id": peer_id})  # Возвращаем JSON с логами
 
+    @app.route("/api/storage")
+    def storage():
+        return jsonify(assemble_storage())  # Возвращаем информацию о файле логов
+
     return app  # Возвращаем готовое Flask-приложение
 
 
 def main() -> None:
     settings = load_settings()  # Загружаем настройки окружения
     state = BotState()  # Создаем объект состояния
-    event_logger = EventLogger(os.getenv("EVENT_DB", "logs.db"))  # Готовим логгер с путём из окружения
+    event_logger = EventLogger(os.getenv("EVENT_DB", resolve_db_path()))  # Готовим логгер с путём из окружения или по умолчанию
     demo_mode = settings.get("demo_mode", False)  # Проверяем, включен ли демо-режим
     if demo_mode:  # Если демо-режим включен
         payload = build_demo_payload(state, event_logger)  # Генерируем демо-данные и пишем их в базу
