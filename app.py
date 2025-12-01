@@ -76,7 +76,9 @@ class EventLogger:
                     created_at TEXT NOT NULL,
                     event_type TEXT NOT NULL,
                     peer_id INTEGER,
+                    peer_title TEXT,
                     from_id INTEGER,
+                    from_name TEXT,
                     message_id INTEGER,
                     reply_to INTEGER,
                     is_bot INTEGER DEFAULT 0,
@@ -90,6 +92,10 @@ class EventLogger:
             columns = {row[1] for row in cursor.fetchall()}  # Собираем имена колонок в множество
             if "is_bot" not in columns:  # Если колонки для флага бота нет
                 cursor.execute("ALTER TABLE events ADD COLUMN is_bot INTEGER DEFAULT 0")  # Добавляем колонку миграцией
+            if "peer_title" not in columns:  # Если нет колонки для названия чата
+                cursor.execute("ALTER TABLE events ADD COLUMN peer_title TEXT")  # Добавляем поле для названия чата
+            if "from_name" not in columns:  # Если нет колонки для имени автора
+                cursor.execute("ALTER TABLE events ADD COLUMN from_name TEXT")  # Добавляем поле для имени отправителя
             self._connection.commit()  # Сохраняем изменения
 
     def describe_storage(self) -> Dict[str, object]:
@@ -99,7 +105,7 @@ class EventLogger:
             "size_bytes": os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0,  # Размер файла в байтах
         }  # Словарь с описанием хранилища
 
-    def log_event(self, event_type: str, payload: Dict) -> None:
+    def log_event(self, event_type: str, payload: Dict, peer_title: Optional[str] = None, from_name: Optional[str] = None) -> None:
         created_at = datetime.utcnow().isoformat()  # Фиксируем время вставки
         peer_id = payload.get("peer_id")  # Берем ID чата
         from_id = payload.get("from_id")  # Берем автора
@@ -112,14 +118,16 @@ class EventLogger:
             cursor = self._connection.cursor()  # Получаем курсор
             cursor.execute(  # Выполняем вставку строки
                 """
-                INSERT INTO events (created_at, event_type, peer_id, from_id, message_id, reply_to, is_bot, text, attachments, payload)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO events (created_at, event_type, peer_id, peer_title, from_id, from_name, message_id, reply_to, is_bot, text, attachments, payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     created_at,  # Время вставки
                     event_type,  # Тип события
                     peer_id,  # Чат
+                    peer_title,  # Название чата
                     from_id,  # Автор
+                    from_name,  # Имя автора
                     message_id,  # ID сообщения
                     reply_to,  # Кому отвечали
                     is_bot,  # Флаг автора-бота
@@ -145,12 +153,16 @@ class EventLogger:
             rows = cursor.fetchall()  # Читаем все строки
         return [dict(row) for row in rows]  # Преобразуем в словари
 
-    def list_peers(self) -> List[int]:
+    def list_peers(self) -> List[Dict[str, object]]:
         with self._lock:  # Начинаем безопасное чтение
             cursor = self._connection.cursor()  # Берем курсор
-            cursor.execute("SELECT DISTINCT peer_id FROM events WHERE peer_id IS NOT NULL ORDER BY peer_id")  # Запрос уникальных чатов
+            cursor.execute("SELECT DISTINCT peer_id, peer_title FROM events WHERE peer_id IS NOT NULL ORDER BY peer_id")  # Запрос уникальных чатов с названиями
             rows = cursor.fetchall()  # Читаем строки
-        return [row[0] for row in rows if row[0] is not None]  # Возвращаем список ID
+        return [  # Возвращаем список словарей с ID и названием
+            {"id": row["peer_id"], "title": row["peer_title"]}  # Словарь с ID и названием
+            for row in rows  # Перебираем строки результата
+            if row["peer_id"] is not None  # Фильтруем пустые значения
+        ]
 
 
 class BotMonitor:
@@ -163,6 +175,9 @@ class BotMonitor:
         self.session = vk_api.VkApi(token=self.token)  # Сессия VK API для запросов
         self._stop_event = threading.Event()  # Флаг корректной остановки потока
         self.event_logger = event_logger  # Объект записи логов
+        self.user_cache: Dict[int, str] = {}  # Кэш имен пользователей для уменьшения запросов
+        self.group_cache: Dict[int, str] = {}  # Кэш названий сообществ
+        self.peer_cache: Dict[int, str] = {}  # Кэш названий чатов по peer_id
 
     def start(self) -> None:
         listener_thread = threading.Thread(target=self._listen, daemon=True)  # Создаем фоновый поток
@@ -176,16 +191,20 @@ class BotMonitor:
                 for event in longpoll.listen():  # Перебираем входящие события VK
                     if event.type == VkBotEventType.MESSAGE_NEW:  # Если это новое сообщение
                         message = event.object.message  # Извлекаем тело сообщения
+                        sender_name = self._resolve_sender_name(message.get("from_id"))  # Находим имя отправителя
+                        peer_title = self._resolve_peer_title(message.get("peer_id"), sender_name)  # Находим название чата
                         payload = {  # Собираем полезные данные для метрик
                             "id": message.get("id"),  # ID сообщения
                             "from_id": message.get("from_id"),  # ID отправителя
+                            "from_name": sender_name,  # Имя отправителя
                             "peer_id": message.get("peer_id"),  # Диалог или чат
+                            "peer_title": peer_title,  # Название чата
                             "text": message.get("text"),  # Текст сообщения
                             "attachments": message.get("attachments", []),  # Список вложений
                             "reply_message": message.get("reply_message"),  # Ответ, если есть
                         }  # Конец сборки payload
                         self.state.mark_event(payload, "message")  # Фиксируем событие в состоянии
-                        self.event_logger.log_event("message", message)  # Записываем исходный payload в базу
+                        self.event_logger.log_event("message", message, peer_title=peer_title, from_name=sender_name)  # Записываем исходный payload с именами в базу
                         logger.info(
                             "Сообщение: peer %s -> %s",  # Текст для лога
                             message.get("peer_id"),  # ID диалога
@@ -203,6 +222,60 @@ class BotMonitor:
             except Exception as exc:  # Перехватываем ошибки в лонгпулле
                 self.state.errors += 1  # Увеличиваем счетчик ошибок
                 logger.exception("Ошибка лонгпулла: %s", exc)  # Пишем стек ошибки
+
+    def _resolve_sender_name(self, from_id: Optional[int]) -> Optional[str]:
+        if not isinstance(from_id, int):  # Если ID некорректный
+            return None  # Возвращаем пустое значение
+        if from_id in self.user_cache:  # Проверяем кэш пользователей
+            return self.user_cache[from_id]  # Возвращаем сохраненное имя
+        if from_id in self.group_cache:  # Проверяем кэш групп
+            return self.group_cache[from_id]  # Возвращаем сохраненное название
+        try:  # Пробуем выполнить запрос
+            if from_id > 0:  # Если это пользователь
+                response = self.session.method("users.get", {"user_ids": from_id})  # Запрашиваем имя пользователя
+                if response:  # Если ответ не пустой
+                    user = response[0]  # Берем первую запись
+                    name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()  # Формируем имя
+                    self.user_cache[from_id] = name  # Кэшируем имя
+                    return name  # Возвращаем имя
+            else:  # Если это сообщество
+                response = self.session.method("groups.getById", {"group_id": abs(from_id)})  # Запрашиваем название сообщества
+                if response:  # Если ответ есть
+                    group = response[0]  # Берем первую запись
+                    name = group.get("name")  # Достаем имя
+                    self.group_cache[from_id] = name or ""  # Кэшируем название
+                    return name  # Возвращаем название
+        except Exception as exc:  # Обрабатываем ошибки VK API
+            logger.debug("Не удалось получить имя отправителя %s: %s", from_id, exc)  # Пишем отладочный лог
+        return None  # Возвращаем None при неудаче
+
+    def _resolve_peer_title(self, peer_id: Optional[int], fallback: Optional[str]) -> Optional[str]:
+        if not isinstance(peer_id, int):  # Если peer_id не число
+            return fallback  # Возвращаем запасной текст
+        if peer_id in self.peer_cache:  # Проверяем кэш чатов
+            return self.peer_cache[peer_id]  # Возвращаем сохраненное название
+        try:  # Пробуем запросить название
+            if peer_id >= 2000000000:  # Если это беседа
+                response = self.session.method("messages.getConversationsById", {"peer_ids": peer_id})  # Запрашиваем данные чата
+                items = response.get("items", []) if isinstance(response, dict) else []  # Получаем список чатов
+                if items:  # Если список не пуст
+                    title = items[0].get("chat_settings", {}).get("title")  # Достаем название беседы
+                    if title:  # Если название найдено
+                        self.peer_cache[peer_id] = title  # Кэшируем
+                        return title  # Возвращаем название
+            elif peer_id > 0:  # Если это личный диалог с пользователем
+                name = self._resolve_sender_name(peer_id)  # Используем имя пользователя
+                if name:  # Если имя найдено
+                    self.peer_cache[peer_id] = name  # Кэшируем
+                    return name  # Возвращаем имя
+            else:  # Если peer_id отрицательный (сообщество)
+                name = self._resolve_sender_name(peer_id)  # Получаем название сообщества
+                if name:  # Если нашли
+                    self.peer_cache[peer_id] = name  # Кэшируем
+                    return name  # Возвращаем название
+        except Exception as exc:  # Обрабатываем ошибки запроса
+            logger.debug("Не удалось получить название чата %s: %s", peer_id, exc)  # Пишем отладку
+        return fallback  # Возвращаем запасной текст
 
     def stop(self) -> None:
         self._stop_event.set()  # Устанавливаем флаг остановки потока
@@ -244,12 +317,12 @@ def fetch_recent_conversations(session: vk_api.VkApi, limit: int = 10) -> List[D
 
 def build_demo_payload(state: BotState, event_logger: EventLogger) -> Dict[str, object]:
     demo_messages = [  # Готовим список демонстрационных сообщений
-        {"id": 1, "from_id": 111, "peer_id": 1, "text": "Первое демо-сообщение", "attachments": []},  # Сообщение 1
-        {"id": 2, "from_id": 222, "peer_id": 2, "text": "Еще одно демо", "attachments": []},  # Сообщение 2
+        {"id": 1, "from_id": 111, "from_name": "Иван Иванов", "peer_id": 1, "peer_title": "Демо-диалог", "text": "Первое демо-сообщение", "attachments": []},  # Сообщение 1
+        {"id": 2, "from_id": 222, "from_name": "Мария Петрова", "peer_id": 2, "peer_title": "Демо-чат", "text": "Еще одно демо", "attachments": []},  # Сообщение 2
     ]  # Конец списка демо-сообщений
     for message in demo_messages:  # Перебираем демо-сообщения
         state.mark_event(message, "message")  # Обновляем метрики для демо
-        event_logger.log_event("message", message)  # Записываем демо в базу
+        event_logger.log_event("message", message, peer_title=message.get("peer_title"), from_name=message.get("from_name"))  # Записываем демо в базу с именами
     state.mark_event({}, "invite")  # Добавляем демо-событие приглашения
     group_info = {
         "name": "Демо-сообщество",  # Название сообщества
@@ -288,7 +361,9 @@ def build_dashboard_app(
             "created_at": row.get("created_at"),  # Время создания
             "event_type": row.get("event_type"),  # Тип события
             "peer_id": row.get("peer_id"),  # ID чата
+            "peer_title": row.get("peer_title"),  # Название чата
             "from_id": row.get("from_id"),  # Автор
+            "from_name": row.get("from_name"),  # Имя автора
             "message_id": row.get("message_id"),  # ID сообщения VK
             "reply_to": row.get("reply_to"),  # Кому ответили
             "is_bot": row.get("is_bot", 0),  # Флаг, что автор — бот или сообщество

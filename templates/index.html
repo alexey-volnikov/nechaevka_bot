@@ -154,8 +154,8 @@
             <table class="table table-sm table-striped align-middle mb-0"> <!-- Таблица сообщений -->
               <thead class="text-secondary"> <!-- Заголовок таблицы -->
                 <tr>
-                  <th>peer_id</th> <!-- Заголовок столбца -->
-                  <th>from_id</th> <!-- Заголовок столбца -->
+                  <th>Чат</th> <!-- Заголовок столбца -->
+                  <th>Отправитель</th> <!-- Заголовок столбца -->
                   <th>Бот?</th> <!-- Заголовок столбца для отметки бота -->
                   <th>Ответ на</th> <!-- Заголовок столбца -->
                   <th>Вложения</th> <!-- Заголовок столбца -->
@@ -277,21 +277,30 @@
         const row = document.createElement('tr'); // Создаем строку
         const attachments = Array.isArray(msg.attachments) ? msg.attachments.length : 0; // Считаем вложения
         const botBadge = msg.is_bot ? 'Да' : 'Нет'; // Определяем, является ли автор ботом
-        row.innerHTML = `<td>${msg.peer_id ?? '—'}</td><td>${msg.from_id ?? '—'}</td><td>${botBadge}</td><td>${msg.reply_to ?? '—'}</td><td>${attachments}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки
+        const peerLabel = msg.peer_title ? `${msg.peer_title} (ID: ${msg.peer_id ?? '—'})` : `${msg.peer_id ?? '—'}`; // Формируем подпись чата
+        const authorLabel = msg.from_name ? `${msg.from_name} (ID: ${msg.from_id ?? '—'})` : `${msg.from_id ?? '—'}`; // Формируем подпись автора
+        row.innerHTML = `<td>${peerLabel}</td><td>${authorLabel}</td><td>${botBadge}</td><td>${msg.reply_to ?? '—'}</td><td>${attachments}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки
         messagesBody.appendChild(row); // Добавляем строку в таблицу
       }); // Конец цикла
     } // Конец функции
 
     function renderPeers(peers) { // Функция отрисовки списка чатов
-      const uniquePeers = Array.from(new Set(peers || [])).filter((p) => Number.isFinite(p)); // Убираем дубликаты
+      const uniquePeers = Array.from( // Формируем массив уникальных чатов
+        new Map( // Создаем словарь уникальности по ID
+          (peers || []) // Берем входные чаты
+            .filter((p) => p && Number.isFinite(p.id)) // Убираем пустые записи
+            .map((p) => [p.id, p]) // Превращаем в пары ключ-значение
+        ).values() // Берем только значения словаря
+      ); // Завершаем сборку массива
       peerSelect.innerHTML = '<option value="">Все чаты</option>'; // Сбрасываем список
       uniquePeers.forEach((peer) => { // Перебираем чаты
         const option = document.createElement('option'); // Создаем опцию
-        option.value = peer; // Значение
-        option.textContent = peer; // Текст
+        option.value = peer.id; // Значение
+        const label = peer.title ? `${peer.title} (ID: ${peer.id})` : peer.id; // Формируем подпись
+        option.textContent = label; // Текст
         peerSelect.appendChild(option); // Добавляем в селектор
       }); // Конец цикла
-      if (currentPeer && uniquePeers.includes(Number(currentPeer))) { // Если выбранный чат все еще существует
+      if (currentPeer && uniquePeers.some((p) => p.id === Number(currentPeer))) { // Если выбранный чат все еще существует
         peerSelect.value = currentPeer; // Возвращаем выбор
       } else { // Если выбора нет
         currentPeer = ''; // Сбрасываем фильтр
