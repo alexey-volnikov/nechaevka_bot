@@ -506,21 +506,46 @@ class BotMonitor:
     def _hydrate_message_details(self, message: Dict) -> Dict:  # Подгружает полную версию сообщения по ID через API
         hydrated = dict(message) if isinstance(message, dict) else {}  # Копируем исходное сообщение в рабочий словарь
         msg_id = hydrated.get("id")  # Извлекаем ID сообщения
+        conv_id = hydrated.get("conversation_message_id")  # Извлекаем ID сообщения в переписке для бота
+        peer_id = hydrated.get("peer_id")  # Получаем peer_id, чтобы можно было сделать запрос по переписке
         if not isinstance(msg_id, int):  # Проверяем, что ID корректный
             return hydrated  # Возвращаем исходное сообщение без изменений
-        try:  # Пробуем запросить полные данные сообщения
-            response = self.session.method("messages.getById", {"message_ids": msg_id})  # Запрашиваем сообщение по ID
+        try:  # Пробуем запросить полные данные сообщения по глобальному ID
+            response = self.session.method(
+                "messages.getById",  # Имя метода VK API
+                {"message_ids": msg_id, "group_id": self.group_id},  # Параметры запроса с указанием группы
+            )  # Завершили вызов API
             items = response.get("items", []) if isinstance(response, dict) else []  # Получаем список сообщений из ответа
-            if not items:  # Если в ответе нет данных
-                return hydrated  # Возвращаем исходное сообщение
-            detailed = items[0] if isinstance(items[0], dict) else {}  # Берем первый элемент как детальный словарь
-            for key in ("attachments", "copy_history", "reply_message"):  # Перебираем интересующие поля
-                if detailed.get(key) is not None:  # Если поле присутствует в детальном ответе
-                    hydrated[key] = detailed.get(key)  # Обновляем сообщение данными из API
-            return hydrated  # Возвращаем дополненное сообщение
+            if items:  # Проверяем, что данные пришли
+                detailed = items[0] if isinstance(items[0], dict) else {}  # Берем первый элемент как детальный словарь
+                for key in ("attachments", "copy_history", "reply_message"):  # Перебираем интересующие поля
+                    if detailed.get(key) is not None:  # Если поле присутствует в детальном ответе
+                        hydrated[key] = detailed.get(key)  # Обновляем сообщение данными из API
         except Exception as exc:  # Ловим любые ошибки запроса
             logger.debug("Не удалось догрузить полное сообщение %s: %s", msg_id, exc)  # Пишем отладочный лог при неудаче
-            return hydrated  # Возвращаем исходное сообщение в случае ошибки
+        attachments_len = len(hydrated.get("attachments", []) or [])  # Считаем количество вложений после первой догрузки
+        try:  # Пробуем запросить данные по conversation_message_id, если вложений подозрительно мало
+            if isinstance(conv_id, int) and isinstance(peer_id, int) and attachments_len <= 1:  # Проверяем наличие данных и малое число вложений
+                response = self.session.method(  # Делаем запрос по conversation_message_id
+                    "messages.getByConversationMessageId",  # Имя метода для переписки
+                    {
+                        "peer_id": peer_id,  # Указываем чат
+                        "conversation_message_ids": conv_id,  # Передаем ID сообщения в чате
+                        "group_id": self.group_id,  # Добавляем ID группы для прав доступа
+                        "extended": 1,  # Запрашиваем расширенный ответ для профилей
+                    },  # Конец словаря параметров
+                )  # Завершаем вызов API
+                items = response.get("items", []) if isinstance(response, dict) else []  # Извлекаем список сообщений
+                if items:  # Проверяем, что ответ не пустой
+                    detailed = items[0] if isinstance(items[0], dict) else {}  # Берем первый элемент
+                    for key in ("attachments", "copy_history", "reply_message"):  # Обновляем интересующие поля
+                        if detailed.get(key) is not None:  # Если поле есть в ответе
+                            hydrated[key] = detailed.get(key)  # Подменяем данные на расширенные
+        except Exception as exc:  # Ловим ошибки второго запроса
+            logger.debug(
+                "Не удалось догрузить сообщение %s через conversation_message_id %s: %s", msg_id, conv_id, exc
+            )  # Пишем отладочный лог
+        return hydrated  # Возвращаем дополненное сообщение
 
     def _sanitize_filename(self, name: str, fallback: str) -> str:
         cleaned = "".join(ch for ch in name if ch.isalnum() or ch in ("-", "_", "."))  # Оставляем буквы, цифры и безопасные символы
@@ -573,11 +598,14 @@ class BotMonitor:
         att_type = attachment.get("type")  # Получаем тип вложения
         content = attachment.get(att_type, {}) if isinstance(att_type, str) else {}  # Получаем вложенный блок по типу
         if att_type == "photo":  # Если вложение фото
-            return self._extract_photo_url(content)  # Возвращаем лучший URL фото
+            direct_url = self._extract_photo_url(content)  # Пытаемся взять ссылку из размеров
+            return direct_url or content.get("url")  # Возвращаем найденный URL или запасной из поля url
         if att_type == "audio_message":  # Если аудиосообщение
             return self._extract_audio_url(content)  # Возвращаем ссылку на аудио
         if att_type == "doc":  # Если документ
             return self._extract_doc_url(content)  # Возвращаем ссылку на документ
+        if isinstance(content, dict) and content.get("url"):  # Fallback на URL в корне для неизвестных типов
+            return content.get("url")  # Возвращаем URL как есть
         if att_type == "video":  # Если видео
             return self._resolve_video_url(content)  # Пытаемся получить прямую ссылку видео
         return None  # Возвращаем пустое значение по умолчанию

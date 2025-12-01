@@ -120,5 +120,59 @@ class BotMonitorHydrationTest(unittest.TestCase):  # Тестовый класс
         self.assertEqual(len(reply_block.get("attachments", [])), 1)  # Убеждаемся, что вложения ответа присутствуют
 
 
+class DummySessionConversation:  # Поддельная сессия, возвращающая расширенный ответ по conversation_message_id
+    def method(self, name: str, params: dict):  # Имитация вызова VK API
+        if name == "messages.getById":  # Ветка для запроса по message_id
+            return {  # Возвращаем усеченный ответ
+                "items": [  # Список сообщений
+                    {  # Единственный элемент
+                        "id": params.get("message_ids"),  # ID сообщения
+                        "attachments": [  # Отдаем только одно вложение, имитируя усеченный ответ
+                            {"type": "photo", "url": "http://example.com/short.jpg"},  # Единственное вложение
+                        ],  # Завершили список вложений
+                    },  # Завершили сообщение
+                ]  # Завершили список items
+            }  # Завершили словарь ответа
+        return {  # Ответ для messages.getByConversationMessageId
+            "items": [  # Список сообщений
+                {  # Полное сообщение с несколькими вложениями
+                    "id": params.get("conversation_message_ids"),  # ID сообщения в переписке
+                    "attachments": [  # Полный список вложений
+                        {"type": "photo", "url": "http://example.com/full1.jpg"},  # Первое вложение
+                        {"type": "photo", "url": "http://example.com/full2.jpg"},  # Второе вложение
+                        {"type": "photo", "url": "http://example.com/full3.jpg"},  # Третье вложение
+                    ],  # Завершили список вложений
+                    "copy_history": [],  # Пустой список репостов
+                    "reply_message": None,  # Нет ответа в этой фиксации
+                },  # Завершили сообщение
+            ]  # Завершили список items
+        }  # Завершили словарь ответа
+
+
+class BotMonitorConversationHydrationTest(unittest.TestCase):  # Тестируем догрузку через conversation_message_id
+    def setUp(self) -> None:  # Подготовка перед тестом
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False)  # Создаем временную базу
+        self.temp_db.close()  # Закрываем файл, чтобы им мог пользоваться SQLite
+        self.logger = EventLogger(self.temp_db.name)  # Создаем логгер событий
+        self.monitor = BotMonitor("token", 1, BotState(), self.logger)  # Создаем монитор
+        self.monitor.session = DummySessionConversation()  # Подменяем сессию на поддельную
+
+    def tearDown(self) -> None:  # Очистка после теста
+        self.logger._connection.close()  # Закрываем соединение с базой
+        os.unlink(self.temp_db.name)  # Удаляем временный файл базы
+
+    def test_conversation_hydration_restores_all_photos(self):  # Проверяем, что догрузка по conversation_message_id возвращает все вложения
+        minimal_message = {  # Формируем усеченное сообщение
+            "id": 111,  # Глобальный ID сообщения
+            "conversation_message_id": 222,  # ID сообщения в переписке
+            "peer_id": 333,  # ID чата
+            "attachments": [{"type": "photo", "url": "http://example.com/short.jpg"}],  # Единственное вложение
+        }  # Завершили подготовку сообщения
+        hydrated = self.monitor._hydrate_message_details(minimal_message)  # Догружаем сообщение через API
+        attachments = hydrated.get("attachments", [])  # Берем список вложений после догрузки
+        self.assertEqual(len(attachments), 3)  # Проверяем, что вернулись все три вложения
+        self.assertEqual(attachments[2].get("url"), "http://example.com/full3.jpg")  # Проверяем, что третье вложение доступно
+
+
 if __name__ == "__main__":  # Точка входа для запуска файла напрямую
     unittest.main()  # Запускаем тестовый раннер
