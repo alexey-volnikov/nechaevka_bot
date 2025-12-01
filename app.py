@@ -147,6 +147,12 @@ class EventLogger:
                     from_avatar TEXT,
                     message_id INTEGER,
                     reply_to INTEGER,
+                    reply_message_id INTEGER,
+                    reply_message_text TEXT,
+                    reply_message_attachments TEXT,
+                    reply_message_from_id INTEGER,
+                    reply_message_from_name TEXT,
+                    reply_message_from_avatar TEXT,
                     is_bot INTEGER DEFAULT 0,
                     text TEXT,
                     attachments TEXT,
@@ -166,7 +172,59 @@ class EventLogger:
                 cursor.execute("ALTER TABLE events ADD COLUMN peer_avatar TEXT")  # Добавляем поле для аватара чата
             if "from_avatar" not in columns:  # Если нет колонки для аватара отправителя
                 cursor.execute("ALTER TABLE events ADD COLUMN from_avatar TEXT")  # Добавляем поле для аватара отправителя
+            if "reply_message_id" not in columns:  # Если нет колонки ID исходного сообщения
+                cursor.execute("ALTER TABLE events ADD COLUMN reply_message_id INTEGER")  # Добавляем колонку для ID ответа
+            if "reply_message_text" not in columns:  # Если нет колонки текста исходного сообщения
+                cursor.execute("ALTER TABLE events ADD COLUMN reply_message_text TEXT")  # Добавляем колонку для текста ответа
+            if "reply_message_attachments" not in columns:  # Если нет колонки вложений исходного сообщения
+                cursor.execute("ALTER TABLE events ADD COLUMN reply_message_attachments TEXT")  # Добавляем колонку для вложений ответа
+            if "reply_message_from_id" not in columns:  # Если нет колонки автора исходного сообщения
+                cursor.execute("ALTER TABLE events ADD COLUMN reply_message_from_id INTEGER")  # Добавляем колонку ID автора исходного сообщения
+            if "reply_message_from_name" not in columns:  # Если нет колонки имени автора исходного сообщения
+                cursor.execute("ALTER TABLE events ADD COLUMN reply_message_from_name TEXT")  # Добавляем колонку имени автора исходного сообщения
+            if "reply_message_from_avatar" not in columns:  # Если нет колонки аватара автора исходного сообщения
+                cursor.execute("ALTER TABLE events ADD COLUMN reply_message_from_avatar TEXT")  # Добавляем колонку аватара автора исходного сообщения
             self._connection.commit()  # Сохраняем изменения
+            cursor.execute(  # Запрашиваем строки с reply_message для нормализации
+                "SELECT id, payload, reply_message_id, reply_message_text, reply_message_attachments, reply_message_from_id FROM events WHERE event_type = 'message'"
+            )
+            rows = cursor.fetchall()  # Читаем строки для миграции
+            for row in rows:  # Перебираем строки с потенциальным ответом
+                try:  # Пробуем распарсить payload
+                    payload = json.loads(row["payload"] or "{}") if isinstance(row, sqlite3.Row) else {}  # Достаем payload в виде словаря
+                except Exception:  # Если JSON некорректный
+                    continue  # Пропускаем запись
+                reply_block = payload.get("reply_message") if isinstance(payload, dict) else None  # Получаем вложенный блок ответа
+                if not isinstance(reply_block, dict):  # Если ответа нет или формат неверный
+                    continue  # Пропускаем запись
+                has_id = row["reply_message_id"] is not None  # Проверяем, заполнен ли ID ответа
+                has_text = row["reply_message_text"] is not None  # Проверяем, заполнен ли текст ответа
+                has_attachments = row["reply_message_attachments"] is not None  # Проверяем, заполнены ли вложения ответа
+                if has_id and has_text and has_attachments:  # Если все поля уже заполнены
+                    continue  # Пропускаем миграцию для этой строки
+                reply_id = reply_block.get("id")  # Получаем ID исходного сообщения
+                reply_text = reply_block.get("text")  # Получаем текст исходного сообщения
+                reply_attachments = reply_block.get("attachments", []) if isinstance(reply_block.get("attachments"), list) else []  # Получаем вложения исходного сообщения
+                reply_from_id = reply_block.get("from_id")  # Получаем автора исходного сообщения
+                reply_from_name = reply_block.get("from_name")  # Получаем имя автора исходного сообщения
+                reply_from_avatar = reply_block.get("from_avatar")  # Получаем аватар автора исходного сообщения
+                cursor.execute(  # Обновляем строку новыми полями ответа
+                    """
+                    UPDATE events
+                    SET reply_message_id = ?, reply_message_text = ?, reply_message_attachments = ?, reply_message_from_id = ?, reply_message_from_name = ?, reply_message_from_avatar = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        reply_id,  # ID исходного сообщения
+                        reply_text,  # Текст исходного сообщения
+                        json.dumps(reply_attachments, ensure_ascii=False),  # Вложения исходного сообщения в JSON
+                        reply_from_id,  # Автор исходного сообщения
+                        reply_from_name,  # Имя автора исходного сообщения
+                        reply_from_avatar,  # Аватар автора исходного сообщения
+                        row["id"],  # ID строки для обновления
+                    ),
+                )
+            self._connection.commit()  # Фиксируем результаты миграции
 
     def describe_storage(self) -> Dict[str, object]:
         return {
@@ -188,7 +246,16 @@ class EventLogger:
         peer_id = payload.get("peer_id")  # Берем ID чата
         from_id = payload.get("from_id")  # Берем автора
         message_id = payload.get("id")  # Берем ID сообщения
-        reply_to = payload.get("reply_message", {}).get("from_id") if isinstance(payload.get("reply_message"), dict) else None  # Берем ID адресата ответа
+        reply_block = payload.get("reply_message") if isinstance(payload.get("reply_message"), dict) else None  # Получаем блок исходного сообщения
+        reply_to = reply_block.get("from_id") if isinstance(reply_block, dict) else None  # Берем ID адресата ответа для обратной совместимости
+        reply_message_id = reply_block.get("id") if isinstance(reply_block, dict) else None  # Берем ID исходного сообщения
+        reply_message_text = reply_block.get("text") if isinstance(reply_block, dict) else None  # Берем текст исходного сообщения
+        reply_message_attachments = (
+            reply_block.get("attachments", []) if isinstance(reply_block, dict) and isinstance(reply_block.get("attachments"), list) else []
+        )  # Берем вложения исходного сообщения
+        reply_message_from_id = reply_block.get("from_id") if isinstance(reply_block, dict) else None  # Берем автора исходного сообщения
+        reply_message_from_name = reply_block.get("from_name") if isinstance(reply_block, dict) else None  # Берем имя автора исходного сообщения
+        reply_message_from_avatar = reply_block.get("from_avatar") if isinstance(reply_block, dict) else None  # Берем аватар автора исходного сообщения
         text = payload.get("text")  # Берем текст
         attachments = payload.get("attachments", [])  # Берем вложения
         is_bot = 1 if isinstance(from_id, int) and from_id < 0 else 0  # Фиксируем, что автор — бот или сообщество
@@ -196,8 +263,8 @@ class EventLogger:
             cursor = self._connection.cursor()  # Получаем курсор
             cursor.execute(  # Выполняем вставку строки
                 """
-                INSERT INTO events (created_at, event_type, peer_id, peer_title, peer_avatar, from_id, from_name, from_avatar, message_id, reply_to, is_bot, text, attachments, payload)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO events (created_at, event_type, peer_id, peer_title, peer_avatar, from_id, from_name, from_avatar, message_id, reply_to, reply_message_id, reply_message_text, reply_message_attachments, reply_message_from_id, reply_message_from_name, reply_message_from_avatar, is_bot, text, attachments, payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     created_at,  # Время вставки
@@ -210,6 +277,12 @@ class EventLogger:
                     from_avatar,  # Аватар автора
                     message_id,  # ID сообщения
                     reply_to,  # Кому отвечали
+                    reply_message_id,  # ID исходного сообщения
+                    reply_message_text,  # Текст исходного сообщения
+                    json.dumps(reply_message_attachments, ensure_ascii=False),  # Вложения исходного сообщения
+                    reply_message_from_id,  # ID автора исходного сообщения
+                    reply_message_from_name,  # Имя автора исходного сообщения
+                    reply_message_from_avatar,  # Аватар автора исходного сообщения
                     is_bot,  # Флаг автора-бота
                     text,  # Текст
                     json.dumps(attachments, ensure_ascii=False),  # Сериализуем вложения
@@ -441,6 +514,14 @@ class BotMonitor:
                         peer_profile = self._resolve_peer_profile(message.get("peer_id"), sender_name)  # Получаем название и аватар чата
                         peer_title = peer_profile.get("title")  # Извлекаем название чата
                         peer_avatar = peer_profile.get("avatar")  # Извлекаем аватар чата
+                        reply_message = message.get("reply_message") if isinstance(message.get("reply_message"), dict) else None  # Получаем исходное сообщение, если это ответ
+                        reply_from_id = reply_message.get("from_id") if isinstance(reply_message, dict) else None  # Определяем автора исходного сообщения
+                        reply_profile = self._resolve_sender_profile(reply_from_id) if reply_from_id else {"name": None, "avatar": None}  # Запрашиваем профиль автора исходного сообщения
+                        if isinstance(reply_message, dict):  # Проверяем, что блок ответа корректный
+                            reply_message = dict(reply_message)  # Копируем блок, чтобы не трогать оригинал VK
+                            reply_message["from_name"] = reply_profile.get("name")  # Добавляем имя автора исходного сообщения
+                            reply_message["from_avatar"] = reply_profile.get("avatar")  # Добавляем аватар автора исходного сообщения
+                            message["reply_message"] = reply_message  # Обновляем исходный payload VK для дальнейшей записи
                         payload = {  # Собираем полезные данные для метрик
                             "id": message.get("id"),  # ID сообщения
                             "from_id": message.get("from_id"),  # ID отправителя
@@ -451,7 +532,7 @@ class BotMonitor:
                             "peer_avatar": peer_avatar,  # Аватар чата
                             "text": message.get("text"),  # Текст сообщения
                             "attachments": message.get("attachments", []),  # Список вложений
-                            "reply_message": message.get("reply_message"),  # Ответ, если есть
+                            "reply_message": reply_message,  # Ответ, если есть
                         }  # Конец сборки payload
                         self.state.mark_event(payload, "message")  # Фиксируем событие в состоянии
                         self.event_logger.log_event(
@@ -610,7 +691,17 @@ def build_demo_payload(state: BotState, event_logger: EventLogger) -> Dict[str, 
             "peer_title": "Демо-чат",  # Название чата
             "peer_avatar": "https://placehold.co/96x96?text=CH",  # Демо-аватар чата
             "text": "Еще одно демо",  # Текст демонстрационного сообщения
-            "attachments": [],  # Список вложений
+            "attachments": [
+                {"type": "sticker", "sticker": {"product_id": 12345, "sticker_id": 67890}}  # Пример вложения стикера
+            ],  # Список вложений
+            "reply_message": {
+                "id": 1,  # ID исходного сообщения
+                "from_id": 111,  # Автор исходного сообщения
+                "from_name": "Иван Иванов",  # Имя автора исходного сообщения
+                "from_avatar": "https://placehold.co/96x96?text=IV",  # Аватар автора исходного сообщения
+                "text": "Первое демо-сообщение",  # Текст исходного сообщения
+                "attachments": [],  # Вложения исходного сообщения
+            },  # Блок ответа на первое сообщение
         },  # Сообщение 2
     ]  # Конец списка демо-сообщений
     for message in demo_messages:  # Перебираем демо-сообщения
@@ -731,7 +822,24 @@ def build_dashboard_app(
         }  # Словарь с сервисным событием
 
     def serialize_log(row: Dict) -> Dict:
-        return {
+        raw_payload = json.loads(row.get("payload") or "{}")  # Сериализуем исходный payload
+        reply_payload = raw_payload.get("reply_message") if isinstance(raw_payload, dict) else None  # Получаем блок ответа из payload
+        reply = {  # Готовим словарь ответа
+            "id": row.get("reply_message_id"),  # ID исходного сообщения
+            "text": row.get("reply_message_text"),  # Текст исходного сообщения
+            "attachments": json.loads(row.get("reply_message_attachments") or "[]"),  # Вложения исходного сообщения
+            "from_id": row.get("reply_message_from_id"),  # Автор исходного сообщения
+            "from_name": row.get("reply_message_from_name"),  # Имя автора исходного сообщения
+            "from_avatar": row.get("reply_message_from_avatar"),  # Аватар автора исходного сообщения
+        }  # Конец словаря ответа
+        if isinstance(reply_payload, dict) and not (reply["id"] or reply["text"] or reply["from_id"]):  # Проверяем, нужно ли дополнить данными из payload
+            reply["id"] = reply_payload.get("id")  # Подставляем ID исходного сообщения из payload
+            reply["text"] = reply_payload.get("text")  # Подставляем текст исходного сообщения
+            reply["attachments"] = reply_payload.get("attachments", []) if isinstance(reply_payload.get("attachments"), list) else []  # Подставляем вложения исходного сообщения
+            reply["from_id"] = reply_payload.get("from_id")  # Подставляем автора исходного сообщения
+            reply["from_name"] = reply_payload.get("from_name")  # Подставляем имя автора исходного сообщения
+            reply["from_avatar"] = reply_payload.get("from_avatar")  # Подставляем аватар автора исходного сообщения
+        return {  # Формируем итоговый словарь лога
             "id": row.get("id"),  # ID записи
             "created_at": localize_iso(row.get("created_at")),  # Локальное время создания в ISO-формате
             "event_type": row.get("event_type"),  # Тип события
@@ -742,11 +850,11 @@ def build_dashboard_app(
             "from_name": row.get("from_name"),  # Имя автора
             "from_avatar": row.get("from_avatar"),  # Аватар автора
             "message_id": row.get("message_id"),  # ID сообщения VK
-            "reply_to": row.get("reply_to"),  # Кому ответили
+            "reply": reply,  # Структурированный блок ответа
             "is_bot": row.get("is_bot", 0),  # Флаг, что автор — бот или сообщество
             "text": row.get("text"),  # Текст
             "attachments": json.loads(row.get("attachments") or "[]"),  # Вложения
-            "payload": json.loads(row.get("payload") or "{}"),  # Сырой payload
+            "payload": raw_payload,  # Сырой payload
         }  # Конец словаря лога
 
     @app.route("/")

@@ -23,6 +23,7 @@
     .service-dot.info { background: #38bdf8; } /* Цвет точки инфо */
     .service-dot.warning { background: #fbbf24; } /* Цвет точки предупреждения */
     .service-dot.error { background: #f87171; } /* Цвет точки ошибки */
+    .avatar-inline { width: 1.6em; height: 1.6em; border-radius: 999px; object-fit: cover; flex-shrink: 0; } /* Класс компактной аватарки */
   </style> <!-- Конец стилей -->
 </head> <!-- Конец шапки -->
 <body class="pb-5"> <!-- Тело страницы -->
@@ -92,7 +93,7 @@
                 <th>Чат</th> <!-- Колонка чата -->
                 <th>Отправитель</th> <!-- Колонка автора -->
                 <th>Бот?</th> <!-- Колонка бота -->
-                <th>Ответ на</th> <!-- Колонка ответа -->
+                <th>Ответ</th> <!-- Колонка ответа -->
                 <th>Вложения</th> <!-- Колонка вложений -->
                 <th>Текст</th> <!-- Колонка текста -->
                 <th>ID VK</th> <!-- Колонка ID сообщения во VK -->
@@ -218,6 +219,28 @@
       return parsed && !Number.isNaN(parsed.valueOf()) ? timeFormatter.format(parsed) : '—'; // Возвращаем отформатированное значение или тире
     } // Конец функции форматирования
 
+    function buildAvatarLabel(label, avatarUrl) { // Функция построения подписи с аватаркой
+      const safeLabel = label || '—'; // Определяем подпись, если значения нет
+      if (avatarUrl) { // Если есть ссылка на аватар
+        return `<span class="d-inline-flex align-items-center gap-2"><img src="${avatarUrl}" alt="Аватар" class="avatar-inline" loading="lazy" /> <span>${safeLabel}</span></span>`; // Возвращаем подпись с картинкой
+      } // Конец проверки аватара
+      return safeLabel; // Если аватар отсутствует, возвращаем только текст
+    } // Конец функции построения подписи
+
+    function buildReplyPreview(reply, peerId) { // Функция сборки ячейки ответа
+      if (!reply || (!reply.id && !reply.text && !reply.from_id)) { // Проверяем наличие полезных данных
+        return '<span class="text-secondary">—</span>'; // Возвращаем плейсхолдер при отсутствии ответа
+      } // Конец проверки наличия ответа
+      const replyId = reply.id ?? '—'; // Определяем ID исходного сообщения
+      const replyText = reply.text ? reply.text.slice(0, 120) : 'Без текста'; // Готовим превью текста
+      const replyAuthorLabel = reply.from_name ? `${reply.from_name} (ID: ${reply.from_id ?? '—'})` : reply.from_id ? `ID: ${reply.from_id}` : 'Автор неизвестен'; // Формируем подпись автора ответа
+      const replyAuthorCell = buildAvatarLabel(replyAuthorLabel, reply.from_avatar); // Готовим подпись автора с аватаркой
+      const replyLink = reply.id && peerId ? `<a href="https://vk.com/im?sel=${peerId}&msgid=${reply.id}" target="_blank" rel="noopener noreferrer">#${reply.id}</a>` : `#${replyId}`; // Собираем ссылку на исходное сообщение
+      const replyAttachmentsCount = Array.isArray(reply.attachments) ? reply.attachments.length : 0; // Считаем вложения исходного сообщения
+      const replyAttachmentsLabel = replyAttachmentsCount ? `${replyAttachmentsCount} влож.` : 'Без вложений'; // Формируем подпись вложений
+      return `<div class="d-flex flex-column gap-1"><div class="d-flex align-items-center gap-2">${replyLink}<span class="text-secondary small">${replyAttachmentsLabel}</span></div><div class="text-secondary small">${replyText}</div><div class="text-secondary small">${replyAuthorCell}</div></div>`; // Возвращаем HTML ячейки
+    } // Конец функции сборки ответа
+
     function switchToMessages() { // Функция показа вкладки сообщений
       messagesSection.classList.remove('d-none'); // Убираем скрытие секции сообщений
       messagesSection.classList.add('d-block'); // Добавляем показ секции сообщений
@@ -268,7 +291,8 @@
         const peerLabel = log.peer_title ? `${log.peer_title} (ID: ${log.peer_id ?? '—'})` : `${log.peer_id ?? '—'}`; // Подпись чата
         const authorLabel = log.from_name ? `${log.from_name} (ID: ${log.from_id ?? '—'})` : `${log.from_id ?? '—'}`; // Подпись автора
         const createdAt = formatDateTime(log.created_at); // Преобразуем время в локальный формат
-        row.innerHTML = `<td>${createdAt}</td><td>${peerLabel}</td><td>${authorLabel}</td><td>${botBadge}</td><td>${log.reply_to ?? '—'}</td><td>${attachments}</td><td>${log.text ?? ''}</td><td>${log.message_id ?? '—'}</td><td>${log.id ?? '—'}</td><td><button type="button" class="btn btn-sm btn-outline-danger delete-log-btn" data-log-id="${log.id}">Удалить</button></td>`; // Заполняем ячейки и кнопку удаления
+        const replyCell = buildReplyPreview(log.reply, log.peer_id); // Готовим ячейку превью исходного сообщения
+        row.innerHTML = `<td>${createdAt}</td><td>${peerLabel}</td><td>${authorLabel}</td><td>${botBadge}</td><td>${replyCell}</td><td>${attachments}</td><td>${log.text ?? ''}</td><td>${log.message_id ?? '—'}</td><td>${log.id ?? '—'}</td><td><button type="button" class="btn btn-sm btn-outline-danger delete-log-btn" data-log-id="${log.id}">Удалить</button></td>`; // Заполняем ячейки и кнопку удаления
         logsBody.appendChild(row); // Добавляем строку в таблицу
       }); // Конец цикла
     } // Конец функции отрисовки
