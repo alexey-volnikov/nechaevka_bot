@@ -21,7 +21,7 @@
     .pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.4); color: #cbd5e1; font-size: 13px; } /* Пилюли статуса */
     .stat-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; } /* Точка индикатора */
     .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
-    .chart-card { min-height: 360px; } /* Минимальная высота графика */
+    .chart-card { min-height: 320px; } /* Минимальная высота графика для компактности */
   </style> <!-- Конец пользовательских стилей -->
 </head> <!-- Конец заголовка -->
 <body class="pb-5"> <!-- Тело страницы с нижним отступом -->
@@ -139,7 +139,7 @@
     </div> <!-- Конец строки метрик -->
 
     <div class="row g-4"> <!-- Основная сетка -->
-      <div class="col-12 col-lg-7"> <!-- Колонка с графиком -->
+      <div class="col-12 col-lg-5"> <!-- Колонка с графиком (новая пропорция) -->
         <div class="glass p-4 shadow-soft chart-card"> <!-- Карточка графика -->
           <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок графика -->
             <div>
@@ -154,7 +154,7 @@
           <canvas id="events-chart" height="260"></canvas> <!-- Полотно графика -->
         </div> <!-- Конец карточки графика -->
       </div> <!-- Конец колонки графика -->
-      <div class="col-12 col-lg-5"> <!-- Колонка последних сообщений -->
+      <div class="col-12 col-lg-7"> <!-- Колонка последних сообщений (новая пропорция) -->
         <div class="glass p-4 shadow-soft h-100"> <!-- Карточка сообщений -->
             <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок -->
               <div>

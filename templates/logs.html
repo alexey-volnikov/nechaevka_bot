@@ -108,18 +108,8 @@
     </div> <!-- Конец секции логов сообщений -->
 
     <div id="service-section" class="d-none"> <!-- Секция сервисных логов -->
-      <div id="service-alerts" class="glass shadow-soft p-4"> <!-- Блок сервисных оповещений -->
-        <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-center gap-3 mb-3"> <!-- Заголовок блока -->
-          <div> <!-- Левая часть заголовка -->
-            <div class="card-title mb-1">Сервисные оповещения</div> <!-- Заголовок текста -->
-            <div class="text-secondary small">Ошибки, предупреждения и информирование о работе сервиса.</div> <!-- Подпись -->
-          </div> <!-- Конец левой части -->
-          <div class="d-flex flex-wrap gap-2"> <!-- Правая часть с кнопками -->
-            <button id="service-refresh" class="btn btn-info text-dark">Обновить</button> <!-- Кнопка обновления -->
-            <button id="service-clear" class="btn btn-outline-light">Очистить логи</button> <!-- Кнопка очистки -->
-          </div> <!-- Конец правой части -->
-        </div> <!-- Конец заголовка блока -->
-        <form id="service-filters" class="row g-3 align-items-end mb-3"> <!-- Форма фильтра сервисных логов -->
+      <div class="glass shadow-soft p-4 mb-4"> <!-- Блок фильтров сервисных логов -->
+        <form id="service-filters" class="row g-3 align-items-end"> <!-- Форма фильтра сервисных логов -->
           <div class="col-12 col-md-4"> <!-- Колонка типа события -->
             <label class="form-label text-secondary small" for="service-type">Тип оповещения</label> <!-- Подпись -->
             <select id="service-type" class="form-select bg-dark text-light border-secondary"> <!-- Селектор типа -->
@@ -142,6 +132,23 @@
             </div> <!-- Конец контейнера -->
           </div> <!-- Конец колонки -->
         </form> <!-- Конец формы фильтра -->
+      </div> <!-- Конец блока фильтров сервисных логов -->
+
+      <div id="service-alerts" class="glass shadow-soft p-4"> <!-- Блок сервисных оповещений -->
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3"> <!-- Заголовок блока -->
+          <div> <!-- Левая часть заголовка -->
+            <div class="card-title mb-1">Сервисные оповещения</div> <!-- Заголовок текста -->
+            <div class="text-secondary small">Ошибки, предупреждения и информирование о работе сервиса.</div> <!-- Подпись -->
+          </div> <!-- Конец левой части -->
+          <div class="d-flex align-items-center flex-wrap gap-2"> <!-- Правая часть с элементами -->
+            <span class="badge-soft badge rounded-pill" id="service-timezone-hint" title="">Локальное время</span> <!-- Бейдж подсказки таймзоны -->
+            <span class="badge bg-secondary">READ ONLY</span> <!-- Бейдж режима -->
+            <div class="d-flex flex-wrap gap-2"> <!-- Группа кнопок -->
+              <button id="service-refresh" class="btn btn-info text-dark">Обновить</button> <!-- Кнопка обновления -->
+              <button id="service-clear" class="btn btn-outline-light">Очистить логи</button> <!-- Кнопка очистки -->
+            </div> <!-- Конец группы кнопок -->
+          </div> <!-- Конец правой части -->
+        </div> <!-- Конец заголовка блока -->
         <div class="table-responsive"> <!-- Обертка таблицы сервисных логов -->
           <table class="table table-striped align-middle mb-0"> <!-- Таблица сервисных логов -->
             <thead class="text-secondary"> <!-- Заголовок таблицы -->
@@ -199,7 +206,8 @@
     const timezoneLabel = `UTC${timezoneOffsetSign}${timezoneOffsetHours}:${timezoneOffsetRestMinutes} (${timezoneInfo.timeZone || 'локальное время'})`; // Формируем строку подсказки
     const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: timezoneInfo.timeZone, timeZoneName: 'short' }); // Настраиваем форматер локального времени
 
-    document.getElementById('timezone-hint').title = `Отображается время ${timezoneLabel}`; // Заполняем подсказку бейджа таймзоны
+    document.getElementById('timezone-hint').title = `Отображается время ${timezoneLabel}`; // Заполняем подсказку бейджа таймзоны для сообщений
+    document.getElementById('service-timezone-hint').title = `Отображается время ${timezoneLabel}`; // Заполняем подсказку бейджа таймзоны для сервисных логов
 
     function formatDateTime(value) { // Функция форматирования даты в локальное время
       const parsed = value ? new Date(value) : null; // Парсим строку даты
