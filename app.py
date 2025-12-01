@@ -610,6 +610,41 @@ class BotMonitor:
             return self._resolve_video_url(content)  # Пытаемся получить прямую ссылку видео
         return None  # Возвращаем пустое значение по умолчанию
 
+    def _attachment_signature(self, attachment: Dict) -> Optional[str]:
+        if not isinstance(attachment, dict):  # Проверяем, что вложение — словарь
+            return None  # Возвращаем пустое значение при неверном формате
+        att_type = attachment.get("type")  # Получаем тип вложения
+        nested = attachment.get(att_type) if isinstance(att_type, str) else None  # Получаем вложенный блок по типу
+        nested_obj = nested if isinstance(nested, dict) else {}  # Нормализуем вложенный блок к словарю
+        owner_id = nested_obj.get("owner_id")  # Читаем owner_id при наличии
+        item_id = nested_obj.get("id")  # Читаем id вложения при наличии
+        access_key = nested_obj.get("access_key")  # Читаем access_key при наличии
+        if owner_id is not None and item_id is not None:  # Если присутствуют идентификаторы VK
+            return f"{att_type}:{owner_id}_{item_id}_{access_key or ''}"  # Формируем сигнатуру по типу и ID
+        url = self._pick_attachment_url(attachment) or attachment.get("url")  # Пробуем взять ссылку вложения
+        if url:  # Если ссылка найдена
+            return f"{att_type or 'file'}:{url}"  # Формируем сигнатуру по типу и ссылке
+        try:  # Пытаемся сформировать сигнатуру из JSON
+            return json.dumps(attachment, sort_keys=True, ensure_ascii=False)  # Возвращаем сериализованную сигнатуру
+        except Exception:  # Ловим ошибки сериализации
+            return None  # Возвращаем пустое значение при ошибке
+
+    def _deduplicate_attachments(self, attachments: List[Dict]) -> List[Dict]:
+        unique: List[Dict] = []  # Готовим список уникальных вложений
+        if not isinstance(attachments, list):  # Проверяем корректность формата
+            return unique  # Возвращаем пустой список при ошибке
+        seen: set = set()  # Множество сигнатур для фильтрации дублей
+        for attachment in attachments:  # Перебираем все вложения
+            if not isinstance(attachment, dict):  # Проверяем тип элемента
+                continue  # Пропускаем некорректные элементы
+            signature = self._attachment_signature(attachment)  # Вычисляем сигнатуру вложения
+            if signature and signature in seen:  # Проверяем, есть ли уже такая сигнатура
+                continue  # Пропускаем дубликат
+            if signature:  # Если сигнатура рассчитана
+                seen.add(signature)  # Добавляем её в множество
+            unique.append(attachment)  # Кладем вложение в итоговый список
+        return unique  # Возвращаем список без дублей
+
     def _build_local_path(self, peer_id: Optional[int], message_id: Optional[int], url: str, attachment_type: str) -> Path:
         parsed = urlparse(url)  # Парсим URL для выделения имени файла
         filename = Path(parsed.path).name  # Пытаемся взять имя файла из пути
@@ -650,7 +685,8 @@ class BotMonitor:
         normalized_list: List[Dict] = []  # Готовим список нормализованных вложений
         if not isinstance(attachments, list):  # Проверяем формат входных данных
             return normalized_list  # Возвращаем пустой список при неверном формате
-        for attachment in attachments:  # Перебираем вложения
+        unique_attachments = self._deduplicate_attachments(attachments)  # Удаляем дубли перед обработкой
+        for attachment in unique_attachments:  # Перебираем уникальные вложения
             normalized_list.append(self._normalize_attachment(attachment, peer_id, message_id))  # Сохраняем каждое вложение
         return normalized_list  # Возвращаем список с локальными путями
 

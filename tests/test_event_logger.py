@@ -2,6 +2,7 @@ import json  # Импортируем модуль для работы с JSON
 import os  # Импортируем os для удаления временного файла
 import tempfile  # Импортируем tempfile для создания временных файлов
 import unittest  # Импортируем unittest для написания тестов
+from pathlib import Path  # Импортируем Path для работы с путями вложений
 
 from app import BotMonitor, BotState, EventLogger  # Импортируем классы приложения для тестов
 
@@ -118,6 +119,41 @@ class BotMonitorHydrationTest(unittest.TestCase):  # Тестовый класс
         self.assertEqual(len(hydrated.get("copy_history", [])), 1)  # Проверяем, что copy_history подставился
         reply_block = hydrated.get("reply_message", {})  # Извлекаем блок ответа
         self.assertEqual(len(reply_block.get("attachments", [])), 1)  # Убеждаемся, что вложения ответа присутствуют
+
+
+class BotMonitorAttachmentDedupTest(unittest.TestCase):  # Тестируем удаление дублей вложений при сохранении
+    def setUp(self) -> None:  # Подготовка перед тестом
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False)  # Создаем временный файл базы
+        self.temp_db.close()  # Закрываем файловый дескриптор базы
+        self.temp_dir = tempfile.TemporaryDirectory()  # Создаем временную директорию для вложений
+        self.logger = EventLogger(self.temp_db.name)  # Создаем логгер событий
+        self.monitor = BotMonitor("token", 1, BotState(), self.logger)  # Создаем монитор бота
+        self.monitor.attachments_dir = Path(self.temp_dir.name)  # Направляем вложения в временную директорию
+        self.monitor.attachments_dir.mkdir(parents=True, exist_ok=True)  # Убеждаемся, что папка существует
+
+    def tearDown(self) -> None:  # Очистка после теста
+        self.logger._connection.close()  # Закрываем соединение с базой
+        os.unlink(self.temp_db.name)  # Удаляем временный файл базы
+        self.temp_dir.cleanup()  # Удаляем временную директорию вложений
+
+    def test_save_attachments_removes_duplicates(self):  # Проверяем, что дубль вложений отфильтровывается
+        def fake_download(url: str, target_path: Path) -> Path:  # Определяем заглушку скачивания файла
+            target_path.parent.mkdir(parents=True, exist_ok=True)  # Создаем каталоги для файла
+            target_path.touch()  # Создаем пустой файл, имитируя скачивание
+            return target_path  # Возвращаем путь к файлу
+
+        self.monitor._download_file = fake_download  # Подменяем скачивание вложений на заглушку
+        attachments = [  # Формируем список вложений с дублями
+            {"type": "photo", "photo": {"owner_id": 1, "id": 10, "sizes": [], "url": "http://example.com/1.jpg"}},  # Первое вложение
+            {"type": "photo", "photo": {"owner_id": 1, "id": 10, "sizes": [], "url": "http://example.com/1.jpg"}},  # Дубликат первого
+            {"type": "photo", "url": "http://example.com/2.jpg"},  # Второе вложение
+            {"type": "photo", "url": "http://example.com/2.jpg"},  # Дубликат второго
+        ]  # Завершили список вложений
+        normalized = self.monitor._save_attachments(attachments, peer_id=55, message_id=77)  # Сохраняем вложения с удалением дублей
+        self.assertEqual(len(normalized), 2)  # Проверяем, что осталось два уникальных вложения
+        urls = [item.get("download_url") or item.get("url") for item in normalized]  # Извлекаем ссылки для проверки
+        self.assertIn("http://example.com/1.jpg", urls)  # Убеждаемся, что первое вложение присутствует
+        self.assertIn("http://example.com/2.jpg", urls)  # Убеждаемся, что второе вложение присутствует
 
 
 class DummySessionConversation:  # Поддельная сессия, возвращающая расширенный ответ по conversation_message_id

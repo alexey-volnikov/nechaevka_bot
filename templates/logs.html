@@ -330,7 +330,30 @@
       return type === 'video' || type === 'story'; // Считаем видео и истории видеоконтентом
     } // Конец функции проверки видео
 
-    function collectAttachmentItems(list, origin, bucket) { // Собираем вложения в плоский список для галереи
+    function attachmentSignature(att) { // Формируем сигнатуру вложения для устранения дублей
+      if (!att || typeof att !== 'object') { // Проверяем корректность объекта
+        return null; // Возвращаем пустое значение при ошибке
+      } // Конец проверки
+      const type = att.type || (att.photo ? 'photo' : att.video ? 'video' : att.doc ? 'doc' : null); // Определяем тип вложения
+      const nested = type && att[type] && typeof att[type] === 'object' ? att[type] : {}; // Берем вложенный блок по типу
+      const owner = nested.owner_id; // Читаем owner_id вложения
+      const id = nested.id; // Читаем id вложения
+      const access = nested.access_key; // Читаем access_key вложения
+      if (owner !== undefined && id !== undefined) { // Проверяем наличие идентификаторов
+        return `${type}:${owner}_${id}_${access || ''}`; // Формируем сигнатуру по ID
+      } // Конец проверки идентификаторов
+      const url = normalizeAttachmentLink(att) || att.public_url || att.download_url || att.url; // Пытаемся взять ссылку вложения
+      if (url) { // Если ссылка найдена
+        return `${type || 'file'}:${url}`; // Формируем сигнатуру по ссылке
+      } // Конец проверки ссылки
+      try { // Пытаемся сериализовать объект
+        return JSON.stringify(att); // Возвращаем сериализованную сигнатуру
+      } catch (e) { // Обрабатываем ошибки сериализации
+        return null; // Возвращаем пустое значение при исключении
+      } // Конец блока обработки ошибок
+    } // Конец функции формирования сигнатуры
+
+    function collectAttachmentItems(list, origin, bucket, seen) { // Собираем вложения в плоский список для галереи
       if (!Array.isArray(list)) { // Проверяем формат входных данных
         return; // Выходим, если передан не список
       } // Конец проверки
@@ -338,12 +361,19 @@
         if (!att || typeof att !== 'object') { // Проверяем корректность элемента
           return; // Пропускаем некорректные записи
         } // Конец проверки
+        const signature = attachmentSignature(att); // Вычисляем сигнатуру вложения
+        if (signature && seen && seen.has(signature)) { // Проверяем, не попадался ли дубликат
+          return; // Пропускаем дубликат
+        } // Конец проверки дубля
         const url = normalizeAttachmentLink(att); // Получаем ссылку на вложение
         if (!url) { // Если ссылки нет
           return; // Пропускаем элемент
         } // Конец проверки наличия ссылки
         const type = att.type || 'file'; // Определяем тип вложения
         const caption = att.title || att.name || att.doc?.title || att.link?.title || att.photo?.text || att.description || ''; // Подбираем подпись
+        if (signature && seen) { // Проверяем наличие набора дублей
+          seen.add(signature); // Сохраняем сигнатуру, чтобы убрать повторы
+        } // Конец добавления сигнатуры
         bucket.push({ url, type, caption, origin: origin || 'Сообщение' }); // Добавляем элемент в итоговый список
       }); // Конец перебора
     } // Конец функции сборки вложений
@@ -355,11 +385,13 @@
         if (!item || typeof item !== 'object') { // Проверяем корректность вложения
           return; // Пропускаем некорректные данные
         } // Конец проверки
-        const signature = item.public_url || item.download_url || item.url || JSON.stringify(item); // Формируем сигнатуру вложения
-        if (seen.has(signature)) { // Проверяем, не добавляли ли этот элемент
+        const signature = attachmentSignature(item); // Формируем сигнатуру вложения
+        if (signature && seen.has(signature)) { // Проверяем, не добавляли ли этот элемент
           return; // Пропускаем дубликат
         } // Конец проверки дубля
-        seen.add(signature); // Запоминаем сигнатуру
+        if (signature) { // Проверяем наличие сигнатуры
+          seen.add(signature); // Запоминаем сигнатуру
+        } // Конец добавления сигнатуры
         result.push(item); // Добавляем вложение в итоговый список
       }; // Конец вспомогательной функции
       if (Array.isArray(primary)) { // Проверяем основной список вложений
@@ -437,7 +469,7 @@
       return null; // Возвращаем null, если ссылки не найдены
     } // Конец функции поиска ссылки в copy_history
 
-    function collectCopyHistoryItems(entries, origin, bucket) { // Рекурсивно собираем вложения из репостов
+    function collectCopyHistoryItems(entries, origin, bucket, seen) { // Рекурсивно собираем вложения из репостов
       if (!Array.isArray(entries)) { // Проверяем формат
         return; // Выходим при неверном типе
       } // Конец проверки
@@ -446,9 +478,9 @@
           return; // Пропускаем неверные элементы
         } // Конец проверки типа
         const entryOrigin = entry.from_name ? `Репост от ${entry.from_name}` : origin || 'Репост'; // Формируем источник
-        collectAttachmentItems(entry.attachments || [], entryOrigin, bucket); // Собираем вложения репоста
+        collectAttachmentItems(entry.attachments || [], entryOrigin, bucket, seen); // Собираем вложения репоста без дублей
         if (Array.isArray(entry.copy_history) && entry.copy_history.length) { // Проверяем наличие вложенных репостов
-          collectCopyHistoryItems(entry.copy_history, entryOrigin, bucket); // Рекурсивно собираем вложения
+          collectCopyHistoryItems(entry.copy_history, entryOrigin, bucket, seen); // Рекурсивно собираем вложения без дублей
         } // Конец проверки вложенных репостов
       }); // Конец перебора репостов
     } // Конец функции сбора вложений из copy_history
@@ -458,13 +490,14 @@
         return; // Выходим, если ключ не передан
       } // Конец проверки ключа
       const bucket = []; // Готовим список вложений
+      const seen = new Set(); // Готовим набор сигнатур для удаления дублей
       const attachments = extractAttachments(message); // Забираем вложения из сообщения или payload
       const copyHistory = extractCopyHistory(message); // Забираем copy_history из сообщения или payload
       const authorLabel = message.from_name ? `${message.from_name} (ID: ${message.from_id ?? '—'})` : `ID: ${message.from_id ?? '—'}`; // Подпись автора
       const peerLabel = message.peer_title ? `${message.peer_title} (ID: ${message.peer_id ?? '—'})` : `ID: ${message.peer_id ?? '—'}`; // Подпись чата
       const meta = { author: authorLabel, peer: peerLabel, text: message.text || 'Без текста' }; // Метаданные для модалки
-      collectAttachmentItems(attachments, 'Сообщение', bucket); // Собираем вложения сообщения
-      collectCopyHistoryItems(copyHistory, 'Репост', bucket); // Собираем вложения репостов
+      collectAttachmentItems(attachments, 'Сообщение', bucket, seen); // Собираем вложения сообщения без дублей
+      collectCopyHistoryItems(copyHistory, 'Репост', bucket, seen); // Собираем вложения репостов без дублей
       if (!bucket.length) { // Если нет вложений
         return; // Не сохраняем пустую галерею
       } // Конец проверки пустоты
