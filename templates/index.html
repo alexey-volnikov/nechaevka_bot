@@ -22,6 +22,7 @@
     .stat-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; } /* Точка индикатора */
     .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
     .chart-card { min-height: 320px; } /* Минимальная высота графика для компактности */
+    .avatar-inline { width: 1.6em; height: 1.6em; border-radius: 999px; object-fit: cover; flex-shrink: 0; } /* Класс для маленьких аватарок по размеру текста */
   </style> <!-- Конец пользовательских стилей -->
 </head> <!-- Конец заголовка -->
 <body class="pb-5"> <!-- Тело страницы с нижним отступом -->
@@ -325,6 +326,14 @@
       groupMembersEl.textContent = data.members_count ? `${data.members_count} участников` : 'Участники: —'; // Отображаем участников
     } // Конец функции
 
+    function buildAvatarLabel(label, avatarUrl) { // Функция построения подписи с аватаркой
+      const safeLabel = label || '—'; // Определяем подпись, если значения нет
+      if (avatarUrl) { // Если есть ссылка на аватар
+        return `<span class="d-inline-flex align-items-center gap-2"><img src="${avatarUrl}" alt="Аватар" class="avatar-inline" loading="lazy" /> <span>${safeLabel}</span></span>`; // Возвращаем подпись с картинкой
+      } // Конец проверки аватара
+      return safeLabel; // Если аватар отсутствует, возвращаем только текст
+    } // Конец функции построения подписи
+
     function renderMessages(messages) { // Функция отрисовки сообщений
       messagesBody.innerHTML = ''; // Очищаем тело таблицы
       if (!messages.length) { // Если пусто
@@ -337,7 +346,9 @@
         const botBadge = msg.is_bot ? 'Да' : 'Нет'; // Определяем, является ли автор ботом
         const peerLabel = msg.peer_title ? `${msg.peer_title} (ID: ${msg.peer_id ?? '—'})` : `${msg.peer_id ?? '—'}`; // Формируем подпись чата
         const authorLabel = msg.from_name ? `${msg.from_name} (ID: ${msg.from_id ?? '—'})` : `${msg.from_id ?? '—'}`; // Формируем подпись автора
-        row.innerHTML = `<td>${peerLabel}</td><td>${authorLabel}</td><td>${botBadge}</td><td>${msg.reply_to ?? '—'}</td><td>${attachments}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки
+        const peerCell = buildAvatarLabel(peerLabel, msg.peer_avatar); // Готовим ячейку чата с аватаркой
+        const authorCell = buildAvatarLabel(authorLabel, msg.from_avatar); // Готовим ячейку автора с аватаркой
+        row.innerHTML = `<td>${peerCell}</td><td>${authorCell}</td><td>${botBadge}</td><td>${msg.reply_to ?? '—'}</td><td>${attachments}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки
         messagesBody.appendChild(row); // Добавляем строку в таблицу
       }); // Конец цикла
     } // Конец функции
@@ -389,8 +400,10 @@
         const type = peer.type || 'unknown'; // Получаем тип
         const localizedType = translatedTypes[type] || translatedTypes.unknown; // Переводим тип на русский
         const messagesCount = Number(conv.messages_count ?? 0); // Нормализуем количество сообщений
+        const avatarUrl = conv.chat_settings?.photo?.photo_50 || conv.chat_settings?.photo?.photo_100 || conv.peer?.avatar; // Определяем ссылку на аватар беседы
+        const titleCell = buildAvatarLabel(title, avatarUrl); // Формируем подпись с аватаркой
         const row = document.createElement('tr'); // Создаем строку
-        row.innerHTML = `<td>${peer.id ?? '—'}</td><td>${localizedType}</td><td>${title}</td><td>${messagesCount}</td>`; // Заполняем строку
+        row.innerHTML = `<td>${peer.id ?? '—'}</td><td>${localizedType}</td><td>${titleCell}</td><td>${messagesCount}</td>`; // Заполняем строку
         conversationsBody.appendChild(row); // Добавляем строку
       }); // Конец цикла
     } // Конец функции
