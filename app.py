@@ -503,6 +503,25 @@ class BotMonitor:
         self.attachments_dir = ATTACHMENTS_ROOT  # Используем общую директорию для вложений
         self.attachments_dir.mkdir(parents=True, exist_ok=True)  # Создаем директории для вложений при инициализации
 
+    def _hydrate_message_details(self, message: Dict) -> Dict:  # Подгружает полную версию сообщения по ID через API
+        hydrated = dict(message) if isinstance(message, dict) else {}  # Копируем исходное сообщение в рабочий словарь
+        msg_id = hydrated.get("id")  # Извлекаем ID сообщения
+        if not isinstance(msg_id, int):  # Проверяем, что ID корректный
+            return hydrated  # Возвращаем исходное сообщение без изменений
+        try:  # Пробуем запросить полные данные сообщения
+            response = self.session.method("messages.getById", {"message_ids": msg_id})  # Запрашиваем сообщение по ID
+            items = response.get("items", []) if isinstance(response, dict) else []  # Получаем список сообщений из ответа
+            if not items:  # Если в ответе нет данных
+                return hydrated  # Возвращаем исходное сообщение
+            detailed = items[0] if isinstance(items[0], dict) else {}  # Берем первый элемент как детальный словарь
+            for key in ("attachments", "copy_history", "reply_message"):  # Перебираем интересующие поля
+                if detailed.get(key) is not None:  # Если поле присутствует в детальном ответе
+                    hydrated[key] = detailed.get(key)  # Обновляем сообщение данными из API
+            return hydrated  # Возвращаем дополненное сообщение
+        except Exception as exc:  # Ловим любые ошибки запроса
+            logger.debug("Не удалось догрузить полное сообщение %s: %s", msg_id, exc)  # Пишем отладочный лог при неудаче
+            return hydrated  # Возвращаем исходное сообщение в случае ошибки
+
     def _sanitize_filename(self, name: str, fallback: str) -> str:
         cleaned = "".join(ch for ch in name if ch.isalnum() or ch in ("-", "_", "."))  # Оставляем буквы, цифры и безопасные символы
         return cleaned or fallback  # Возвращаем очищенное имя или запасной вариант
@@ -637,6 +656,7 @@ class BotMonitor:
                 for event in longpoll.listen():  # Перебираем входящие события VK
                     if event.type == VkBotEventType.MESSAGE_NEW:  # Если это новое сообщение
                         message = event.object.message  # Извлекаем тело сообщения
+                        message = self._hydrate_message_details(message)  # Догружаем полную версию сообщения через API
                         sender_profile = self._resolve_sender_profile(message.get("from_id"))  # Получаем имя и аватар отправителя
                         sender_name = sender_profile.get("name")  # Извлекаем имя из профиля
                         sender_avatar = sender_profile.get("avatar")  # Извлекаем аватар из профиля
