@@ -134,18 +134,17 @@ class EventLogger:
     def _ensure_schema(self) -> None:
         with self._lock:  # Закрываем блокировку
             cursor = self._connection.cursor()  # Берем курсор
-            cursor.execute(  # Создаем таблицу при отсутствии
-                """
+            schema_sql = """
                 CREATE TABLE IF NOT EXISTS events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     created_at TEXT NOT NULL,
                     event_type TEXT NOT NULL,
                     peer_id INTEGER,
                     peer_title TEXT,
-                    peer_avatar TEXT,  # Ссылка на аватар чата
+                    peer_avatar TEXT,
                     from_id INTEGER,
                     from_name TEXT,
-                    from_avatar TEXT,  # Ссылка на аватар отправителя
+                    from_avatar TEXT,
                     message_id INTEGER,
                     reply_to INTEGER,
                     is_bot INTEGER DEFAULT 0,
@@ -153,8 +152,8 @@ class EventLogger:
                     attachments TEXT,
                     payload TEXT
                 )
-                """
-            )
+            """  # SQL-скрипт создания таблицы без комментариев внутри текста
+            cursor.execute(schema_sql)  # Создаем таблицу при отсутствии
             cursor.execute("PRAGMA table_info(events)")  # Читаем описание колонок для миграции
             columns = {row[1] for row in cursor.fetchall()}  # Собираем имена колонок в множество
             if "is_bot" not in columns:  # Если колонки для флага бота нет
