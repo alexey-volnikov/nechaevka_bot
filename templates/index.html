@@ -96,6 +96,41 @@
       </div> <!-- Конец колонки -->
     </div> <!-- Конец строки метрик -->
 
+    <div class="glass p-4 shadow-soft mb-4"> <!-- Карточка системных уведомлений -->
+      <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок карточки -->
+        <div> <!-- Левая часть -->
+          <div class="card-title mb-1">Системные уведомления</div> <!-- Заголовок -->
+          <div class="text-secondary small">Журнал сервисных событий приложения</div> <!-- Подпись -->
+        </div> <!-- Конец левой части -->
+        <span class="pill" id="system-important-pill"> <!-- Индикатор важности -->
+          <span class="stat-dot bg-secondary" id="system-important-dot"></span> <!-- Точка статуса -->
+          <span id="system-important-text">Нет новых важных событий</span> <!-- Текст статуса -->
+        </span> <!-- Конец индикатора -->
+      </div> <!-- Конец заголовка -->
+      <div class="d-flex flex-wrap gap-4 align-items-center"> <!-- Блок чисел -->
+        <div> <!-- Всего записей -->
+          <div class="metric" id="system-total">0</div> <!-- Число всех событий -->
+          <div class="metric-sub">Всего записей</div> <!-- Подпись -->
+        </div> <!-- Конец блока -->
+        <div> <!-- Информационные -->
+          <div class="metric" id="system-info">0</div> <!-- Число INFO -->
+          <div class="metric-sub">Информационные</div> <!-- Подпись -->
+        </div> <!-- Конец блока -->
+        <div> <!-- Предупреждения -->
+          <div class="metric" id="system-warning">0</div> <!-- Число WARNING -->
+          <div class="metric-sub">Предупреждения</div> <!-- Подпись -->
+        </div> <!-- Конец блока -->
+        <div> <!-- Ошибки -->
+          <div class="metric" id="system-error">0</div> <!-- Число ERROR -->
+          <div class="metric-sub">Ошибки</div> <!-- Подпись -->
+        </div> <!-- Конец блока -->
+      </div> <!-- Конец блока чисел -->
+      <div class="d-flex flex-wrap gap-2 mt-3"> <!-- Блок кнопок -->
+        <a class="btn btn-outline-light btn-sm" href="/system-logs">Открыть журнал</a> <!-- Кнопка перехода -->
+        <button class="btn btn-danger btn-sm" id="clear-logs-btn" type="button">Очистить логи</button> <!-- Кнопка очистки -->
+      </div> <!-- Конец блока кнопок -->
+    </div> <!-- Конец карточки системных уведомлений -->
+
     <div class="row g-4"> <!-- Основная сетка -->
       <div class="col-12 col-lg-7"> <!-- Колонка с графиком -->
         <div class="glass p-4 shadow-soft chart-card"> <!-- Карточка графика -->
@@ -197,6 +232,14 @@
     const groupIdEl = document.getElementById('group-id'); // ID сообщества
     const groupMembersEl = document.getElementById('group-members'); // Количество участников
     const demoBadge = document.getElementById('demo-badge'); // Бейдж демо
+    const systemTotalEl = document.getElementById('system-total'); // Всего системных событий
+    const systemInfoEl = document.getElementById('system-info'); // Счетчик INFO
+    const systemWarningEl = document.getElementById('system-warning'); // Счетчик WARNING
+    const systemErrorEl = document.getElementById('system-error'); // Счетчик ERROR
+    const systemImportantDot = document.getElementById('system-important-dot'); // Точка индикатора важности
+    const systemImportantPill = document.getElementById('system-important-pill'); // Плашка индикатора
+    const systemImportantText = document.getElementById('system-important-text'); // Текст индикатора
+    const clearLogsBtn = document.getElementById('clear-logs-btn'); // Кнопка очистки логов
 
     if (demoMode) { // Если включен демо-режим
       demoBadge.style.display = 'inline-flex'; // Показываем бейдж демо
@@ -270,10 +313,43 @@
       chart.update(); // Перерисовываем график
     } // Конец функции
 
+    function renderSystemSummary(summary) { // Функция вывода сводки системных логов
+      systemTotalEl.textContent = summary.total ?? 0; // Показываем общее число
+      systemInfoEl.textContent = summary.info ?? 0; // Показываем число INFO
+      systemWarningEl.textContent = summary.warning ?? 0; // Показываем число WARNING
+      systemErrorEl.textContent = summary.error ?? 0; // Показываем число ERROR
+      const hasImportant = Boolean(summary.has_new_important); // Проверяем наличие новых важных
+      systemImportantDot.className = hasImportant ? 'stat-dot bg-danger' : 'stat-dot bg-secondary'; // Меняем цвет точки
+      systemImportantText.textContent = hasImportant
+        ? 'Есть новые предупреждения/ошибки'
+        : 'Нет новых важных событий'; // Обновляем подпись
+    } // Конец функции
+
+    async function refreshSystemSummary() { // Функция загрузки сводки логов
+      try { // Пытаемся получить данные
+        const res = await fetch('/api/system-logs/summary'); // Запрашиваем сводку
+        const data = await res.json(); // Читаем JSON
+        renderSystemSummary(data); // Выводим сводку на страницу
+      } catch (err) { // В случае ошибки
+        console.error('Не удалось загрузить сводку логов', err); // Пишем ошибку в консоль
+      } // Конец обработки
+    } // Конец функции
+
+    async function clearSystemLogs() { // Функция очистки журналов
+      try { // Пытаемся отправить запрос
+        await fetch('/api/system-logs/clear', { method: 'POST' }); // Отправляем POST на очистку
+        await refreshSystemSummary(); // Обновляем сводку после очистки
+      } catch (err) { // В случае ошибки
+        console.error('Не удалось очистить логи', err); // Логируем ошибку
+      } // Конец обработки
+    } // Конец функции
+
     function bootstrapPage() { // Инициализация страницы
       renderGroup(initialGroup || {}); // Показываем данные сообщества
       renderConversations(initialConversations || []); // Показываем диалоги
       updateMetrics(initialStats || { timeline: [] }); // Показываем метрики
+      refreshSystemSummary(); // Загружаем сводку системных логов
+      clearLogsBtn.addEventListener('click', clearSystemLogs); // Вешаем обработчик очистки
     } // Конец функции
 
     async function poll() { // Функция периодического опроса
@@ -284,6 +360,7 @@
         updateMetrics(stats); // Обновляем метрики
         renderGroup(overview.group || {}); // Обновляем информацию о сообществе
         renderConversations(overview.conversations || []); // Обновляем диалоги
+        refreshSystemSummary(); // Обновляем сводку системных логов
       } catch (err) { // В случае ошибки
         console.error('Ошибка обновления дашборда', err); // Пишем ошибку в консоль
       } // Конец обработки ошибки

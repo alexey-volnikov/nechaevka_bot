@@ -1,0 +1,117 @@
+<!doctype html> <!-- Объявляем тип документа -->
+<html lang="ru"> <!-- Указываем язык страницы -->
+<head> <!-- Начало заголовка -->
+  <meta charset="UTF-8" /> <!-- Кодировка UTF-8 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" /> <!-- Масштабирование -->
+  <title>Системные логи</title> <!-- Заголовок вкладки -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" /> <!-- Подключаем Bootstrap -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" /> <!-- Предзагрузка шрифта -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /> <!-- Кросс-доменное подключение -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" /> <!-- Шрифт Inter -->
+  <style> /* Пользовательские стили */
+    body { background: #0f172a; color: #e2e8f0; font-family: "Inter", system-ui, -apple-system, sans-serif; } /* Фон и текст */
+    .glass { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; backdrop-filter: blur(10px); } /* Стеклянный эффект */
+    .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
+    .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачные ячейки */
+    .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатые строки */
+    .badge-soft { background: rgba(99, 102, 241, 0.15); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.35); } /* Мягкий бейдж */
+  </style> <!-- Конец стилей -->
+</head> <!-- Конец заголовка -->
+<body class="pb-5"> <!-- Тело страницы с отступом снизу -->
+  <div class="container py-4"> <!-- Контейнер страницы -->
+    <div class="d-flex justify-content-between align-items-center mb-4"> <!-- Верхняя панель -->
+      <div> <!-- Левая часть -->
+        <h1 class="fw-bold mb-1">Системные уведомления</h1> <!-- Заголовок страницы -->
+        <p class="text-secondary mb-0">Подробный журнал сервисных событий приложения.</p> <!-- Подзаголовок -->
+      </div> <!-- Конец левой части -->
+      <div class="d-flex gap-2"> <!-- Блок кнопок -->
+        <a class="btn btn-outline-light" href="/">Назад к дашборду</a> <!-- Кнопка возврата -->
+        <button class="btn btn-danger" id="clear-logs-page" type="button">Очистить журнал</button> <!-- Кнопка очистки -->
+      </div> <!-- Конец блока кнопок -->
+    </div> <!-- Конец верхней панели -->
+
+    <div class="glass p-4 shadow-soft mb-3"> <!-- Карточка резюме -->
+      <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок карточки -->
+        <div class="card-title mb-0">Последние события</div> <!-- Название -->
+        <span class="badge-soft badge rounded-pill" id="important-indicator">Нет новых важных</span> <!-- Индикатор -->
+      </div> <!-- Конец заголовка -->
+      <div class="table-responsive"> <!-- Обертка таблицы -->
+        <table class="table table-striped align-middle mb-0"> <!-- Таблица событий -->
+          <thead class="text-secondary"> <!-- Заголовок таблицы -->
+            <tr> <!-- Строка заголовка -->
+              <th>#</th> <!-- Колонка ID -->
+              <th>Уровень</th> <!-- Колонка уровня -->
+              <th>Код</th> <!-- Колонка кода -->
+              <th>Пояснение</th> <!-- Колонка пояснения -->
+              <th>Сообщение</th> <!-- Колонка сообщения -->
+              <th>Время</th> <!-- Колонка времени -->
+            </tr> <!-- Конец строки заголовка -->
+          </thead> <!-- Конец заголовка -->
+          <tbody id="logs-body"> <!-- Тело таблицы -->
+            <tr> <!-- Плейсхолдер -->
+              <td colspan="6" class="text-secondary">Нет данных</td> <!-- Сообщение о пустоте -->
+            </tr> <!-- Конец плейсхолдера -->
+          </tbody> <!-- Конец тела -->
+        </table> <!-- Конец таблицы -->
+      </div> <!-- Конец обертки -->
+    </div> <!-- Конец карточки -->
+  </div> <!-- Конец контейнера -->
+
+  <script> // Начало скрипта
+    const initialLogs = JSON.parse('{{ initial_logs|safe }}'); // Читаем стартовые логи из шаблона
+    const logsBody = document.getElementById('logs-body'); // Получаем тело таблицы
+    const importantIndicator = document.getElementById('important-indicator'); // Получаем индикатор важных событий
+    const clearPageButton = document.getElementById('clear-logs-page'); // Получаем кнопку очистки
+
+    function renderLogs(events) { // Функция отрисовки строк таблицы
+      logsBody.innerHTML = ''; // Очищаем тело таблицы
+      if (!events.length) { // Если событий нет
+        logsBody.innerHTML = '<tr><td colspan="6" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
+        return; // Выходим
+      } // Конец проверки пустоты
+      events.forEach((event) => { // Перебираем события
+        const row = document.createElement('tr'); // Создаем строку
+        row.innerHTML = `
+          <td>${event.id}</td>
+          <td><span class="badge ${event.level === 'ERROR' ? 'bg-danger' : event.level === 'WARNING' ? 'bg-warning text-dark' : 'bg-info text-dark'}">${event.level}</span></td>
+          <td>${event.code}</td>
+          <td>${event.explanation}</td>
+          <td>${event.message}</td>
+          <td>${event.created_at}</td>
+        `; // Заполняем HTML строки
+        logsBody.appendChild(row); // Добавляем строку в таблицу
+      }); // Конец цикла
+    } // Конец функции
+
+    function renderIndicator(hasImportant) { // Функция обновления индикатора
+      importantIndicator.textContent = hasImportant ? 'Есть новые важные события' : 'Нет новых важных'; // Меняем текст
+      importantIndicator.className = hasImportant ? 'badge bg-danger rounded-pill' : 'badge-soft badge rounded-pill'; // Меняем стили
+    } // Конец функции
+
+    async function loadLogs() { // Функция загрузки логов
+      try { // Пробуем выполнить запрос
+        const res = await fetch('/api/system-logs'); // Запрашиваем логи
+        const data = await res.json(); // Читаем JSON
+        renderLogs(data.events || []); // Отрисовываем события
+        renderIndicator(data.has_new_important); // Обновляем индикатор
+      } catch (err) { // В случае ошибки
+        console.error('Не удалось загрузить логи', err); // Логируем ошибку
+      } // Конец обработки
+    } // Конец функции
+
+    async function clearLogs() { // Функция очистки логов
+      try { // Пробуем отправить запрос
+        await fetch('/api/system-logs/clear', { method: 'POST' }); // Отправляем POST на очистку
+        await loadLogs(); // Обновляем таблицу после очистки
+      } catch (err) { // В случае ошибки
+        console.error('Не удалось очистить логи', err); // Логируем ошибку
+      } // Конец обработки
+    } // Конец функции
+
+    clearPageButton.addEventListener('click', clearLogs); // Вешаем обработчик на кнопку
+    renderLogs(initialLogs.events || []); // Отрисовываем стартовые события
+    renderIndicator(initialLogs.has_new_important); // Отрисовываем стартовый индикатор
+    setInterval(loadLogs, 5000); // Обновляем лог каждые 5 секунд
+  </script> <!-- Конец скрипта -->
+</body> <!-- Конец тела -->
+</html> <!-- Конец документа -->

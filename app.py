@@ -1,20 +1,139 @@
 import json  # Сериализация объектов в JSON для шаблона
 import logging  # Настройка логирования событий приложения
 import os  # Работа с переменными окружения
+import sqlite3  # Хранение системных событий в базе SQLite
 import threading  # Запуск фонового потока лонгпулла
 from dataclasses import dataclass, field  # Упрощенное объявление классов состояния
 from datetime import datetime  # Фиксация времени событий для графиков
-from typing import Dict, List  # Подсказки типов для словарей и списков
+from typing import Dict, List, Optional  # Подсказки типов для словарей, списков и необязательных значений
 
 from dotenv import load_dotenv  # Загрузка переменных окружения из .env
-from flask import Flask, jsonify, render_template  # Веб-сервер и рендер HTML шаблонов
+from flask import Flask, jsonify, render_template, request  # Веб-сервер, рендер HTML и доступ к запросам
 import vk_api  # Клиент VK API
 from vk_api.bot_longpoll import VkBotEventType, VkBotLongPoll  # Лонгпулл сообщества для чтения событий
 
 load_dotenv()  # Инициализируем загрузку переменных окружения при старте скрипта
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s")  # Формат логов
+logging.getLogger("werkzeug").setLevel(logging.WARNING)  # Поднимаем уровень логгера werkzeug, чтобы убрать шум запросов
 logger = logging.getLogger(__name__)  # Получаем логгер для текущего модуля
+
+
+class SystemEventLogger:
+    """Менеджер системных событий с потокобезопасной записью в SQLite."""
+
+    def __init__(self, db_path: str):
+        self.db_path = db_path  # Путь до файла базы данных
+        self._lock = threading.Lock()  # Блокировка для синхронизации потоков
+        self._event_explanations = {  # Человеческие пояснения к кодам событий
+            "APP_START": "Приложение запущено",  # Старт приложения
+            "DEMO_MODE": "Запуск в демо-режиме без подключения к VK",  # Информация о демо
+            "MONITOR_START": "Запущен фоновый монитор лонгпулла",  # Старт мониторинга
+            "FETCH_GROUP_FAIL": "Не удалось получить информацию о сообществе",  # Ошибка запроса профиля
+            "FETCH_DIALOGS_FAIL": "Не удалось получить список диалогов",  # Ошибка запроса диалогов
+            "LONGPOLL_ERROR": "Ошибка при обработке событий лонгпулла",  # Ошибка лонгпулла
+            "APP_CRASH": "Критическая ошибка приложения",  # Критическая ошибка
+            "LOG_CLEARED": "Системные логи очищены пользователем",  # Очистка логов
+        }  # Словарь пояснений
+        self._last_seen_id = 0  # ID последней просмотренной записи
+        self._ensure_schema()  # Создаем таблицу при инициализации
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.db_path, check_same_thread=False)  # Открываем соединение с отключенной проверкой потока
+        connection.row_factory = sqlite3.Row  # Включаем режим доступа к колонкам по имени
+        return connection  # Возвращаем соединение
+
+    def _ensure_schema(self) -> None:
+        with self._lock:  # Захватываем блокировку
+            conn = self._connect()  # Открываем соединение
+            try:  # Оформляем создание таблицы
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS system_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        code TEXT NOT NULL,
+                        level TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        explanation TEXT NOT NULL,
+                        created_at TEXT NOT NULL
+                    )
+                    """  # SQL для таблицы
+                )  # Выполняем создание таблицы
+                conn.commit()  # Сохраняем изменения
+            finally:
+                conn.close()  # Закрываем соединение
+
+    def log_event(self, code: str, level: str, message: str) -> None:
+        explanation = self._event_explanations.get(code, "Неизвестное событие")  # Получаем пояснение по коду
+        timestamp = datetime.utcnow().isoformat()  # Формируем метку времени
+        with self._lock:  # Захватываем блокировку
+            conn = self._connect()  # Открываем соединение
+            try:  # Пытаемся записать событие
+                conn.execute(
+                    "INSERT INTO system_events (code, level, message, explanation, created_at) VALUES (?, ?, ?, ?, ?)",  # SQL вставки
+                    (code, level.upper(), message, explanation, timestamp),  # Параметры вставки
+                )  # Выполняем вставку
+                conn.commit()  # Фиксируем изменения
+            finally:
+                conn.close()  # Закрываем соединение
+
+    def fetch_events(self, limit: int = 200, mark_read: bool = True) -> Dict[str, object]:
+        with self._lock:  # Захватываем блокировку
+            conn = self._connect()  # Открываем соединение
+            try:  # Читаем записи
+                cursor = conn.execute(
+                    "SELECT id, code, level, message, explanation, created_at FROM system_events ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                )  # Получаем курсор
+                rows = cursor.fetchall()  # Читаем все строки
+                events = [dict(row) for row in rows]  # Преобразуем в словари
+                has_new_important = any(  # Проверяем наличие новых важных событий
+                    row["id"] > self._last_seen_id and row["level"] in {"WARNING", "ERROR"} for row in events
+                )  # Условие важности
+                if mark_read and events:  # Если нужно обновить отметку прочтения
+                    self._last_seen_id = max(self._last_seen_id, events[0]["id"])  # Обновляем ID последнего события
+                return {
+                    "events": events,  # Список событий
+                    "has_new_important": has_new_important,  # Флаг новых предупреждений/ошибок
+                    "last_seen_id": self._last_seen_id,  # Последнее просмотренное
+                }  # Возвращаем результат
+            finally:
+                conn.close()  # Закрываем соединение
+
+    def clear_events(self) -> None:
+        with self._lock:  # Захватываем блокировку
+            conn = self._connect()  # Открываем соединение
+            try:  # Пытаемся очистить таблицу
+                conn.execute("DELETE FROM system_events")  # Удаляем все строки
+                conn.commit()  # Фиксируем изменения
+                self._last_seen_id = 0  # Сбрасываем отметку прочтения
+            finally:
+                conn.close()  # Закрываем соединение
+
+    def summary(self) -> Dict[str, object]:
+        with self._lock:  # Захватываем блокировку
+            conn = self._connect()  # Открываем соединение
+            try:  # Выполняем агрегацию
+                cursor = conn.execute(
+                    "SELECT level, COUNT(*) as count, MAX(id) as max_id FROM system_events GROUP BY level"
+                )  # Выполняем запрос агрегатов
+                rows = cursor.fetchall()  # Читаем все строки
+                totals = {row["level"]: row["count"] for row in rows}  # Строим словарь с количеством
+                max_id = max((row["max_id"] or 0 for row in rows), default=0)  # Находим максимальный ID
+                has_new_important = max_id > self._last_seen_id and any(  # Проверяем новые важные события
+                    (row["level"] in {"WARNING", "ERROR"} and (row["max_id"] or 0) > self._last_seen_id)
+                    for row in rows
+                )  # Условие важности
+                return {
+                    "total": sum(totals.values()),  # Общее количество
+                    "info": totals.get("INFO", 0),  # Количество INFO
+                    "warning": totals.get("WARNING", 0),  # Количество WARNING
+                    "error": totals.get("ERROR", 0),  # Количество ERROR
+                    "has_new_important": has_new_important,  # Флаг новых важных событий
+                    "last_seen_id": self._last_seen_id,  # ID последнего просмотренного
+                }  # Возвращаем сводку
+            finally:
+                conn.close()  # Закрываем соединение
 
 
 @dataclass
@@ -55,17 +174,20 @@ class BotState:
 class BotMonitor:
     """Фоновый монитор лонгпулла без отправки сообщений."""
 
-    def __init__(self, token: str, group_id: int, state: BotState):
+    def __init__(self, token: str, group_id: int, state: BotState, event_logger: Optional[SystemEventLogger]):
         self.state = state  # Запоминаем объект состояния для обновлений
         self.token = token  # Токен сообщества
         self.group_id = group_id  # ID сообщества
         self.session = vk_api.VkApi(token=self.token)  # Сессия VK API для запросов
         self._stop_event = threading.Event()  # Флаг корректной остановки потока
+        self.event_logger = event_logger  # Системный логгер для записи ошибок
 
     def start(self) -> None:
         listener_thread = threading.Thread(target=self._listen, daemon=True)  # Создаем фоновый поток
         listener_thread.start()  # Запускаем поток с лонгпуллом
         logger.info("Лонгпулл запущен в фоновом потоке")  # Пишем в лог успешный запуск
+        if self.event_logger:  # Если системный логгер доступен
+            self.event_logger.log_event("MONITOR_START", "INFO", "Фоновый монитор запущен")  # Фиксируем событие запуска
 
     def _listen(self) -> None:
         longpoll = VkBotLongPoll(self.session, self.group_id)  # Создаем слушателя событий сообщества
@@ -99,6 +221,8 @@ class BotMonitor:
             except Exception as exc:  # Перехватываем ошибки в лонгпулле
                 self.state.errors += 1  # Увеличиваем счетчик ошибок
                 logger.exception("Ошибка лонгпулла: %s", exc)  # Пишем стек ошибки
+                if self.event_logger:  # Если доступен системный логгер
+                    self.event_logger.log_event("LONGPOLL_ERROR", "ERROR", str(exc))  # Фиксируем ошибку в SQLite
 
     def stop(self) -> None:
         self._stop_event.set()  # Устанавливаем флаг остановки потока
@@ -149,7 +273,9 @@ def build_demo_payload(state: BotState) -> Dict[str, object]:
     return {"group_info": group_info, "conversations": conversations}  # Возвращаем набор демо-данных
 
 
-def build_dashboard_app(state: BotState, group_info: Dict, conversations: List[Dict], demo_mode: bool) -> Flask:
+def build_dashboard_app(
+    state: BotState, group_info: Dict, conversations: List[Dict], demo_mode: bool, event_logger: SystemEventLogger
+) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")  # Создаем Flask-приложение
 
     def assemble_stats() -> Dict[str, object]:
@@ -188,14 +314,41 @@ def build_dashboard_app(state: BotState, group_info: Dict, conversations: List[D
             }
         )  # Возвращаем обзорную информацию
 
+    @app.route("/api/system-logs")
+    def system_logs():
+        mark_read = request.args.get("mark_read", "true").lower() != "false"  # Проверяем, нужно ли отмечать прочитанным
+        limit = int(request.args.get("limit", "200"))  # Получаем лимит выдачи
+        return jsonify(event_logger.fetch_events(limit=limit, mark_read=mark_read))  # Отдаем события в JSON
+
+    @app.route("/api/system-logs/summary")
+    def system_logs_summary():
+        return jsonify(event_logger.summary())  # Возвращаем сводку по уровням
+
+    @app.route("/api/system-logs/clear", methods=["POST"])
+    def clear_system_logs():
+        event_logger.clear_events()  # Очищаем таблицу событий
+        event_logger.log_event("LOG_CLEARED", "INFO", "Журнал очищен через API")  # Фиксируем событие очистки
+        return jsonify({"status": "ok"})  # Возвращаем успешный ответ
+
+    @app.route("/system-logs")
+    def system_logs_page():
+        initial_logs = event_logger.fetch_events(limit=200, mark_read=True)  # Получаем стартовый набор логов
+        return render_template(
+            "system_logs.html",  # Шаблон страницы логов
+            initial_logs=json.dumps(initial_logs, ensure_ascii=False),  # JSON логов для инициализации
+        )  # Рендерим страницу логов
+
     return app  # Возвращаем готовое Flask-приложение
 
 
 def main() -> None:
     settings = load_settings()  # Загружаем настройки окружения
+    event_logger = SystemEventLogger(os.getenv("SYSTEM_LOG_DB", "system_events.db"))  # Создаем системный логгер
+    event_logger.log_event("APP_START", "INFO", "Приложение инициализировано")  # Фиксируем старт приложения
     state = BotState()  # Создаем объект состояния
     demo_mode = settings.get("demo_mode", False)  # Проверяем, включен ли демо-режим
     if demo_mode:  # Если демо-режим включен
+        event_logger.log_event("DEMO_MODE", "WARNING", "Запуск без подключения к VK (демо)")  # Пишем событие демо-режима
         payload = build_demo_payload(state)  # Генерируем демо-данные
         group_info = payload["group_info"]  # Получаем демо-профиль
         conversations = payload["conversations"]  # Получаем демо-диалоги
@@ -207,15 +360,17 @@ def main() -> None:
             group_info = fetch_group_profile(session, settings["group_id"])  # Получаем информацию о сообществе
         except Exception as exc:  # Если запрос завершился ошибкой
             logger.exception("Не удалось загрузить информацию о сообществе: %s", exc)  # Логируем подробности
+            event_logger.log_event("FETCH_GROUP_FAIL", "WARNING", str(exc))  # Пишем событие об ошибке запроса профиля
             group_info = {}  # Используем пустой словарь
         try:  # Пробуем получить диалоги
             conversations = fetch_recent_conversations(session)  # Запрашиваем список диалогов
         except Exception as exc:  # Обрабатываем исключения VK API
             logger.exception("Не удалось получить список диалогов: %s", exc)  # Логируем ошибку
+            event_logger.log_event("FETCH_DIALOGS_FAIL", "WARNING", str(exc))  # Фиксируем ошибку загрузки диалогов
             conversations = []  # Используем пустой список
-        monitor = BotMonitor(settings["token"], settings["group_id"], state)  # Создаем монитор лонгпулла
+        monitor = BotMonitor(settings["token"], settings["group_id"], state, event_logger)  # Создаем монитор лонгпулла
         monitor.start()  # Запускаем лонгпулл
-    app = build_dashboard_app(state, group_info, conversations, demo_mode)  # Создаем Flask-приложение
+    app = build_dashboard_app(state, group_info, conversations, demo_mode, event_logger)  # Создаем Flask-приложение
     port = int(os.getenv("PORT", "8000"))  # Определяем порт из окружения
     logger.info("Дашборд запущен на http://127.0.0.1:%s", port)  # Сообщаем адрес запуска
     app.run(host="0.0.0.0", port=port)  # Запускаем сервер
@@ -225,5 +380,11 @@ if __name__ == "__main__":  # Точка входа
     try:  # Защищаем основной запуск от необработанных ошибок
         main()  # Запускаем приложение
     except Exception as exc:  # Если произошла ошибка
+        try:  # Пробуем записать событие в системный журнал
+            SystemEventLogger(os.getenv("SYSTEM_LOG_DB", "system_events.db")).log_event(
+                "APP_CRASH", "ERROR", str(exc)
+            )  # Фиксируем критическую ошибку
+        except Exception:  # Если логирование не удалось
+            pass  # Игнорируем сбой записи системного события
         logger.exception("Приложение завершилось с ошибкой: %s", exc)  # Пишем стек ошибки
         input("Нажмите Enter, чтобы закрыть окно...")  # Не даем окну закрыться мгновенно в Windows
