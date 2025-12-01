@@ -3,6 +3,8 @@ import logging  # Настройка логирования событий пр�
 import os  # Работа с переменными окружения
 import sqlite3  # Работа с базой SQLite для логов
 import threading  # Запуск фонового потока лонгпулла
+from pathlib import Path  # Удобная работа с путями и иерархией директорий
+from urllib.parse import urlparse  # Разбор URL для выбора имени файла
 from dataclasses import dataclass, field  # Упрощенное объявление классов состояния
 from datetime import datetime, timedelta  # Фиксация времени событий и диапазонов
 from typing import Dict, List, Optional  # Подсказки типов для словарей и списков
@@ -10,7 +12,8 @@ from typing import Dict, List, Optional  # Подсказки типов для 
 from logging.handlers import RotatingFileHandler  # Обработчик логов с ротацией файлов
 
 from dotenv import load_dotenv  # Загрузка переменных окружения из .env
-from flask import Flask, jsonify, render_template, request  # Веб-сервер, рендер и разбор запросов
+from flask import Flask, jsonify, render_template, request, send_from_directory  # Веб-сервер, рендер, разбор запросов и отдача файлов
+import requests  # Загрузка файлов вложений по URL
 import vk_api  # Клиент VK API
 from vk_api.bot_longpoll import VkBotEventType, VkBotLongPoll  # Лонгпулл сообщества для чтения событий
 
@@ -39,6 +42,8 @@ def safe_int_env(value: Optional[str], fallback: int) -> int:  # Функция 
 
 
 DEFAULT_TIMELINE_MINUTES = safe_int_env(os.getenv("TIMELINE_DEFAULT_MINUTES"), 60)  # Диапазон минут по умолчанию для графика
+ATTACHMENTS_ROOT = Path(os.getenv("ATTACHMENTS_DIR") or os.path.join(os.getcwd(), "data", "attachments")).resolve()  # Базовая папка для вложений, доступная через веб
+ATTACHMENTS_ROOT.mkdir(parents=True, exist_ok=True)  # Создаем директорию вложений, если её нет
 
 
 class ServiceContextFilter(logging.Filter):  # Фильтр для добавления обязательных полей
@@ -495,6 +500,213 @@ class BotMonitor:
         self.user_cache: Dict[int, Dict[str, Optional[str]]] = {}  # Кэш профилей пользователей (имя и аватар)
         self.group_cache: Dict[int, Dict[str, Optional[str]]] = {}  # Кэш профилей сообществ (имя и аватар)
         self.peer_cache: Dict[int, Dict[str, Optional[str]]] = {}  # Кэш профилей чатов по peer_id
+        self.attachments_dir = ATTACHMENTS_ROOT  # Используем общую директорию для вложений
+        self.attachments_dir.mkdir(parents=True, exist_ok=True)  # Создаем директории для вложений при инициализации
+
+    def _hydrate_message_details(self, message: Dict) -> Dict:  # Подгружает полную версию сообщения по ID через API
+        hydrated = dict(message) if isinstance(message, dict) else {}  # Копируем исходное сообщение в рабочий словарь
+        msg_id = hydrated.get("id")  # Извлекаем ID сообщения
+        conv_id = hydrated.get("conversation_message_id")  # Извлекаем ID сообщения в переписке для бота
+        peer_id = hydrated.get("peer_id")  # Получаем peer_id, чтобы можно было сделать запрос по переписке
+        if not isinstance(msg_id, int):  # Проверяем, что ID корректный
+            return hydrated  # Возвращаем исходное сообщение без изменений
+        try:  # Пробуем запросить полные данные сообщения по глобальному ID
+            response = self.session.method(
+                "messages.getById",  # Имя метода VK API
+                {"message_ids": msg_id, "group_id": self.group_id},  # Параметры запроса с указанием группы
+            )  # Завершили вызов API
+            items = response.get("items", []) if isinstance(response, dict) else []  # Получаем список сообщений из ответа
+            if items:  # Проверяем, что данные пришли
+                detailed = items[0] if isinstance(items[0], dict) else {}  # Берем первый элемент как детальный словарь
+                for key in ("attachments", "copy_history", "reply_message"):  # Перебираем интересующие поля
+                    if detailed.get(key) is not None:  # Если поле присутствует в детальном ответе
+                        hydrated[key] = detailed.get(key)  # Обновляем сообщение данными из API
+        except Exception as exc:  # Ловим любые ошибки запроса
+            logger.debug("Не удалось догрузить полное сообщение %s: %s", msg_id, exc)  # Пишем отладочный лог при неудаче
+        attachments_len = len(hydrated.get("attachments", []) or [])  # Считаем количество вложений после первой догрузки
+        try:  # Пробуем запросить данные по conversation_message_id, если вложений подозрительно мало
+            if isinstance(conv_id, int) and isinstance(peer_id, int) and attachments_len <= 1:  # Проверяем наличие данных и малое число вложений
+                response = self.session.method(  # Делаем запрос по conversation_message_id
+                    "messages.getByConversationMessageId",  # Имя метода для переписки
+                    {
+                        "peer_id": peer_id,  # Указываем чат
+                        "conversation_message_ids": conv_id,  # Передаем ID сообщения в чате
+                        "group_id": self.group_id,  # Добавляем ID группы для прав доступа
+                        "extended": 1,  # Запрашиваем расширенный ответ для профилей
+                    },  # Конец словаря параметров
+                )  # Завершаем вызов API
+                items = response.get("items", []) if isinstance(response, dict) else []  # Извлекаем список сообщений
+                if items:  # Проверяем, что ответ не пустой
+                    detailed = items[0] if isinstance(items[0], dict) else {}  # Берем первый элемент
+                    for key in ("attachments", "copy_history", "reply_message"):  # Обновляем интересующие поля
+                        if detailed.get(key) is not None:  # Если поле есть в ответе
+                            hydrated[key] = detailed.get(key)  # Подменяем данные на расширенные
+        except Exception as exc:  # Ловим ошибки второго запроса
+            logger.debug(
+                "Не удалось догрузить сообщение %s через conversation_message_id %s: %s", msg_id, conv_id, exc
+            )  # Пишем отладочный лог
+        return hydrated  # Возвращаем дополненное сообщение
+
+    def _sanitize_filename(self, name: str, fallback: str) -> str:
+        cleaned = "".join(ch for ch in name if ch.isalnum() or ch in ("-", "_", "."))  # Оставляем буквы, цифры и безопасные символы
+        return cleaned or fallback  # Возвращаем очищенное имя или запасной вариант
+
+    def _extract_photo_url(self, photo_block: Dict) -> Optional[str]:
+        sizes = photo_block.get("sizes", []) if isinstance(photo_block, dict) else []  # Получаем список размеров фото
+        if not sizes:  # Проверяем наличие размеров
+            return None  # Возвращаем пустое значение, если нет размеров
+        best_size = max(sizes, key=lambda item: item.get("width", 0) * item.get("height", 0))  # Выбираем самое большое изображение
+        return best_size.get("url")  # Возвращаем URL выбранного размера
+
+    def _extract_audio_url(self, audio_block: Dict) -> Optional[str]:
+        if not isinstance(audio_block, dict):  # Проверяем формат блока аудио
+            return None  # Возвращаем пустое значение при некорректном формате
+        return audio_block.get("link_mp3") or audio_block.get("link_ogg")  # Возвращаем ссылку на MP3 или OGG
+
+    def _extract_doc_url(self, doc_block: Dict) -> Optional[str]:
+        if not isinstance(doc_block, dict):  # Проверяем формат блока документа
+            return None  # Возвращаем пустое значение при ошибке
+        return doc_block.get("url")  # Возвращаем прямую ссылку на документ
+
+    def _resolve_video_url(self, video_block: Dict) -> Optional[str]:
+        if not isinstance(video_block, dict):  # Проверяем формат блока видео
+            return None  # Возвращаем пустое значение при ошибке
+        owner_id = video_block.get("owner_id")  # Получаем owner_id видео
+        video_id = video_block.get("id")  # Получаем id видео
+        access_key = video_block.get("access_key")  # Получаем access_key видео
+        if owner_id is None or video_id is None:  # Проверяем наличие обязательных полей
+            return None  # Возвращаем пустое значение, если данных нет
+        videos_param = f"{owner_id}_{video_id}" + (f"_{access_key}" if access_key else "")  # Формируем параметр videos для API
+        try:  # Пробуем запросить VK API
+            response = self.session.method("video.get", {"videos": videos_param})  # Запрашиваем детали видео
+            items = response.get("items", []) if isinstance(response, dict) else []  # Получаем список видео из ответа
+            if not items:  # Проверяем наличие данных
+                return None  # Возвращаем пустое значение при пустом ответе
+            files_block = items[0].get("files", {}) if isinstance(items[0], dict) else {}  # Получаем блок файлов видео
+            if not isinstance(files_block, dict):  # Проверяем формат блока файлов
+                return None  # Возвращаем пустое значение при ошибке
+            candidates = [files_block.get(key) for key in sorted(files_block.keys()) if key.startswith("mp4") or key == "mp4"]  # Собираем ссылки mp4
+            candidates = [url for url in candidates if isinstance(url, str)]  # Оставляем только строки URL
+            return candidates[-1] if candidates else None  # Возвращаем самую последнюю (обычно наибольшее качество)
+        except Exception as exc:  # Обрабатываем ошибки VK API
+            logger.debug("Не удалось запросить файл видео: %s", exc)  # Пишем отладку при неудаче
+            return None  # Возвращаем пустое значение
+
+    def _pick_attachment_url(self, attachment: Dict) -> Optional[str]:
+        if not isinstance(attachment, dict):  # Проверяем формат вложения
+            return None  # Возвращаем пустое значение
+        att_type = attachment.get("type")  # Получаем тип вложения
+        content = attachment.get(att_type, {}) if isinstance(att_type, str) else {}  # Получаем вложенный блок по типу
+        if att_type == "photo":  # Если вложение фото
+            direct_url = self._extract_photo_url(content)  # Пытаемся взять ссылку из размеров
+            return direct_url or content.get("url")  # Возвращаем найденный URL или запасной из поля url
+        if att_type == "audio_message":  # Если аудиосообщение
+            return self._extract_audio_url(content)  # Возвращаем ссылку на аудио
+        if att_type == "doc":  # Если документ
+            return self._extract_doc_url(content)  # Возвращаем ссылку на документ
+        if isinstance(content, dict) and content.get("url"):  # Fallback на URL в корне для неизвестных типов
+            return content.get("url")  # Возвращаем URL как есть
+        if att_type == "video":  # Если видео
+            return self._resolve_video_url(content)  # Пытаемся получить прямую ссылку видео
+        return None  # Возвращаем пустое значение по умолчанию
+
+    def _attachment_signature(self, attachment: Dict) -> Optional[str]:
+        if not isinstance(attachment, dict):  # Проверяем, что вложение — словарь
+            return None  # Возвращаем пустое значение при неверном формате
+        att_type = attachment.get("type")  # Получаем тип вложения
+        nested = attachment.get(att_type) if isinstance(att_type, str) else None  # Получаем вложенный блок по типу
+        nested_obj = nested if isinstance(nested, dict) else {}  # Нормализуем вложенный блок к словарю
+        owner_id = nested_obj.get("owner_id")  # Читаем owner_id при наличии
+        item_id = nested_obj.get("id")  # Читаем id вложения при наличии
+        access_key = nested_obj.get("access_key")  # Читаем access_key при наличии
+        if owner_id is not None and item_id is not None:  # Если присутствуют идентификаторы VK
+            return f"{att_type}:{owner_id}_{item_id}_{access_key or ''}"  # Формируем сигнатуру по типу и ID
+        url = self._pick_attachment_url(attachment) or attachment.get("url")  # Пробуем взять ссылку вложения
+        if url:  # Если ссылка найдена
+            return f"{att_type or 'file'}:{url}"  # Формируем сигнатуру по типу и ссылке
+        try:  # Пытаемся сформировать сигнатуру из JSON
+            return json.dumps(attachment, sort_keys=True, ensure_ascii=False)  # Возвращаем сериализованную сигнатуру
+        except Exception:  # Ловим ошибки сериализации
+            return None  # Возвращаем пустое значение при ошибке
+
+    def _deduplicate_attachments(self, attachments: List[Dict]) -> List[Dict]:
+        unique: List[Dict] = []  # Готовим список уникальных вложений
+        if not isinstance(attachments, list):  # Проверяем корректность формата
+            return unique  # Возвращаем пустой список при ошибке
+        seen: set = set()  # Множество сигнатур для фильтрации дублей
+        for attachment in attachments:  # Перебираем все вложения
+            if not isinstance(attachment, dict):  # Проверяем тип элемента
+                continue  # Пропускаем некорректные элементы
+            signature = self._attachment_signature(attachment)  # Вычисляем сигнатуру вложения
+            if signature and signature in seen:  # Проверяем, есть ли уже такая сигнатура
+                continue  # Пропускаем дубликат
+            if signature:  # Если сигнатура рассчитана
+                seen.add(signature)  # Добавляем её в множество
+            unique.append(attachment)  # Кладем вложение в итоговый список
+        return unique  # Возвращаем список без дублей
+
+    def _build_local_path(self, peer_id: Optional[int], message_id: Optional[int], url: str, attachment_type: str) -> Path:
+        parsed = urlparse(url)  # Парсим URL для выделения имени файла
+        filename = Path(parsed.path).name  # Пытаемся взять имя файла из пути
+        base_name = self._sanitize_filename(filename, f"file_{attachment_type}")  # Очищаем имя файла
+        target_folder = self.attachments_dir / str(peer_id or "unknown_peer") / str(message_id or "unknown_message")  # Формируем вложенную директорию
+        target_folder.mkdir(parents=True, exist_ok=True)  # Создаем вложенные директории
+        return target_folder / base_name  # Возвращаем полный путь до файла
+
+    def _download_file(self, url: str, target_path: Path) -> Optional[Path]:
+        try:  # Пробуем скачать файл
+            response = requests.get(url, timeout=30, stream=True)  # Выполняем HTTP-запрос с таймаутом
+            response.raise_for_status()  # Бросаем исключение при ошибке статуса
+            with target_path.open("wb") as file_handle:  # Открываем файл для записи
+                for chunk in response.iter_content(chunk_size=8192):  # Читаем ответ блоками
+                    if not chunk:  # Пропускаем пустые блоки
+                        continue  # Переходим к следующему блоку
+                    file_handle.write(chunk)  # Записываем блок в файл
+            return target_path  # Возвращаем путь к сохраненному файлу
+        except Exception as exc:  # Обрабатываем ошибки скачивания
+            logger.warning("Не удалось сохранить вложение %s: %s", url, exc)  # Пишем предупреждение в лог
+            return None  # Возвращаем пустое значение при ошибке
+
+    def _normalize_attachment(self, attachment: Dict, peer_id: Optional[int], message_id: Optional[int]) -> Dict:
+        normalized = dict(attachment) if isinstance(attachment, dict) else {}  # Копируем вложение, чтобы не трогать оригинал
+        att_type = normalized.get("type")  # Получаем тип вложения
+        download_url = self._pick_attachment_url(normalized)  # Пытаемся извлечь прямую ссылку
+        normalized["local_path"] = None  # Подготавливаем поле для пути
+        normalized["download_url"] = download_url  # Сохраняем URL в явном виде
+        normalized["transcript"] = normalized.get("transcript")  # Резерв для будущей расшифровки аудио
+        if download_url:  # Если удалось получить ссылку
+            target_path = self._build_local_path(peer_id, message_id, download_url, att_type or "file")  # Формируем путь сохранения
+            saved_path = self._download_file(download_url, target_path)  # Пытаемся скачать файл
+            if saved_path:  # Проверяем успешность сохранения
+                normalized["local_path"] = str(saved_path)  # Сохраняем путь к файлу
+        return normalized  # Возвращаем нормализованное вложение
+
+    def _save_attachments(self, attachments: List[Dict], peer_id: Optional[int], message_id: Optional[int]) -> List[Dict]:
+        normalized_list: List[Dict] = []  # Готовим список нормализованных вложений
+        if not isinstance(attachments, list):  # Проверяем формат входных данных
+            return normalized_list  # Возвращаем пустой список при неверном формате
+        unique_attachments = self._deduplicate_attachments(attachments)  # Удаляем дубли перед обработкой
+        for attachment in unique_attachments:  # Перебираем уникальные вложения
+            normalized_list.append(self._normalize_attachment(attachment, peer_id, message_id))  # Сохраняем каждое вложение
+        return normalized_list  # Возвращаем список с локальными путями
+
+    def _normalize_copy_history(self, copy_history: object, peer_id: Optional[int], parent_message_id: Optional[int]) -> List[Dict]:  # Нормализует список репостов и вложений
+        normalized: List[Dict] = []  # Готовим список нормализованных репостов
+        if not isinstance(copy_history, list):  # Проверяем формат входящих данных
+            return normalized  # Возвращаем пустой список при ошибке формата
+        for entry in copy_history:  # Перебираем каждый элемент copy_history
+            if not isinstance(entry, dict):  # Проверяем тип элемента
+                continue  # Пропускаем некорректные записи
+            entry_copy = dict(entry)  # Копируем исходный словарь, чтобы не менять оригинал
+            entry_copy["attachments"] = self._save_attachments(entry_copy.get("attachments", []), peer_id, entry_copy.get("id") or parent_message_id)  # Сохраняем вложения репоста
+            nested_copy = entry_copy.get("copy_history")  # Получаем вложенный copy_history, если он есть
+            entry_copy["copy_history"] = self._normalize_copy_history(nested_copy, peer_id, entry_copy.get("id") or parent_message_id) if nested_copy else []  # Рекурсивно нормализуем вложенные репосты
+            from_id = entry_copy.get("from_id")  # Получаем автора репоста
+            profile = self._resolve_sender_profile(from_id)  # Тянем имя и аватар автора
+            entry_copy["from_name"] = profile.get("name")  # Добавляем имя автора
+            entry_copy["from_avatar"] = profile.get("avatar")  # Добавляем аватар автора
+            normalized.append(entry_copy)  # Кладем готовый репост в итоговый список
+        return normalized  # Возвращаем нормализованный список репостов
 
     def start(self) -> None:
         listener_thread = threading.Thread(target=self._listen, daemon=True)  # Создаем фоновый поток
@@ -508,6 +720,7 @@ class BotMonitor:
                 for event in longpoll.listen():  # Перебираем входящие события VK
                     if event.type == VkBotEventType.MESSAGE_NEW:  # Если это новое сообщение
                         message = event.object.message  # Извлекаем тело сообщения
+                        message = self._hydrate_message_details(message)  # Догружаем полную версию сообщения через API
                         sender_profile = self._resolve_sender_profile(message.get("from_id"))  # Получаем имя и аватар отправителя
                         sender_name = sender_profile.get("name")  # Извлекаем имя из профиля
                         sender_avatar = sender_profile.get("avatar")  # Извлекаем аватар из профиля
@@ -522,6 +735,12 @@ class BotMonitor:
                             reply_message["from_name"] = reply_profile.get("name")  # Добавляем имя автора исходного сообщения
                             reply_message["from_avatar"] = reply_profile.get("avatar")  # Добавляем аватар автора исходного сообщения
                             message["reply_message"] = reply_message  # Обновляем исходный payload VK для дальнейшей записи
+                        message["attachments"] = self._save_attachments(message.get("attachments", []), message.get("peer_id"), message.get("id"))  # Сохраняем вложения на диск и добавляем локальные пути
+                        if isinstance(reply_message, dict):  # Проверяем, что есть вложения в исходном сообщении
+                            reply_message["attachments"] = self._save_attachments(reply_message.get("attachments", []), message.get("peer_id"), reply_message.get("id"))  # Сохраняем вложения исходного сообщения
+                        copy_history = self._normalize_copy_history(message.get("copy_history"), message.get("peer_id"), message.get("id"))  # Нормализуем репосты и вложения внутри них
+                        if copy_history:  # Если репосты есть
+                            message["copy_history"] = copy_history  # Сохраняем нормализованный список в payload
                         payload = {  # Собираем полезные данные для метрик
                             "id": message.get("id"),  # ID сообщения
                             "from_id": message.get("from_id"),  # ID отправителя
@@ -532,6 +751,7 @@ class BotMonitor:
                             "peer_avatar": peer_avatar,  # Аватар чата
                             "text": message.get("text"),  # Текст сообщения
                             "attachments": message.get("attachments", []),  # Список вложений
+                            "copy_history": copy_history,  # Репосты с вложениями
                             "reply_message": reply_message,  # Ответ, если есть
                         }  # Конец сборки payload
                         self.state.mark_event(payload, "message")  # Фиксируем событие в состоянии
@@ -791,12 +1011,13 @@ def build_dashboard_app(
     def assemble_stats(range_minutes: Optional[int] = None) -> Dict[str, object]:
         selected_range = range_minutes if isinstance(range_minutes, int) and range_minutes > 0 else DEFAULT_TIMELINE_MINUTES  # Нормализуем выбранный диапазон
         messages_count = event_logger.count_messages(selected_range)  # Считаем сообщения за выбранный диапазон
+        last_messages = [decorate_message_preview(msg) for msg in state.last_messages]  # Нормализуем вложения последних сообщений
         return {  # Собираем словарь статистики
             "events": messages_count,  # Количество событий за диапазон берем из количества сообщений
             "messages": messages_count,  # Количество сообщений за диапазон
             "invites": state.invites,  # Количество приглашений/удалений за текущую сессию
             "errors": state.errors,  # Количество ошибок лонгпулла за текущую сессию
-            "last_messages": state.last_messages,  # История последних сообщений из оперативной памяти
+            "last_messages": last_messages,  # История последних сообщений из оперативной памяти с кликабельными вложениями
             "timeline": event_logger.fetch_timeline(selected_range),  # Точки графика из базы по диапазону
             "range_minutes": selected_range,  # Возвращаем выбранный диапазон минут
         }
@@ -810,6 +1031,81 @@ def build_dashboard_app(
             return parsed.astimezone().isoformat() if parsed else None  # Конвертируем в локальное время и возвращаем ISO
         except Exception:  # Обрабатываем неверный формат строки
             return None  # Возвращаем None при ошибке
+
+    def build_public_attachment_url(local_path: Optional[str]) -> Optional[str]:  # Строит публичную ссылку на локальный файл вложения
+        try:  # Пытаемся собрать публичную ссылку на вложение
+            if not local_path:  # Проверяем, передан ли путь
+                return None  # Возвращаем пустое значение, если пути нет
+            path_obj = Path(local_path).resolve()  # Нормализуем путь до файла
+            if not str(path_obj).startswith(str(ATTACHMENTS_ROOT)):  # Проверяем, что файл лежит внутри корневой папки вложений
+                return None  # Не отдаём файлы вне разрешенной директории
+            relative = path_obj.relative_to(ATTACHMENTS_ROOT)  # Получаем относительный путь внутри папки вложений
+            return f"/attachments/{relative.as_posix()}"  # Формируем URL для раздачи через Flask
+        except Exception:  # Ловим любые ошибки работы с путями
+            return None  # Возвращаем пустое значение при проблеме
+
+    def enrich_attachments_list(attachments: object) -> List[Dict]:  # Добавляет публичные ссылки и нормализует вложения
+        enriched: List[Dict] = []  # Готовим список нормализованных вложений
+        if not isinstance(attachments, list):  # Проверяем, что входной объект — список
+            return enriched  # Возвращаем пустой список при некорректном формате
+        for raw in attachments:  # Перебираем все вложения
+            if not isinstance(raw, dict):  # Проверяем тип элемента
+                continue  # Пропускаем элементы неправильного формата
+            item = dict(raw)  # Делаем копию вложения
+            local_path = item.get("local_path")  # Читаем локальный путь
+            public_url = build_public_attachment_url(local_path)  # Пробуем собрать публичную ссылку
+            if public_url:  # Если ссылка собралась
+                item["public_url"] = public_url  # Добавляем публичную ссылку для фронтенда
+            else:  # Если публичная ссылка не собралась
+                item["public_url"] = item.get("download_url") or item.get("url")  # Оставляем исходную ссылку как fallback
+            resolved_url = item.get("public_url") or item.get("download_url") or item.get("url")  # Берем итоговую ссылку для совместимости
+            if resolved_url:  # Проверяем, что ссылка определена
+                item["url"] = resolved_url  # Явно сохраняем итоговую ссылку в поле url, чтобы фронт не терял вложения
+            enriched.append(item)  # Добавляем нормализованное вложение в список
+        return enriched  # Возвращаем итоговый список
+
+    def count_attachments(attachments: object) -> int:  # Подсчитывает количество вложений в списке
+        if not isinstance(attachments, list):  # Проверяем корректность формата входных данных
+            return 0  # Возвращаем 0, если данные некорректны
+        return sum(1 for att in attachments if isinstance(att, dict))  # Считаем только словари вложений
+
+    def count_copy_history_attachments(entries: object) -> int:  # Рекурсивно считает вложения в репостах
+        if not isinstance(entries, list):  # Проверяем формат copy_history
+            return 0  # Возвращаем 0 при ошибке формата
+        total = 0  # Инициализируем счетчик вложений
+        for entry in entries:  # Перебираем каждый репост
+            if not isinstance(entry, dict):  # Проверяем тип записи
+                continue  # Пропускаем некорректные элементы
+            total += count_attachments(entry.get("attachments"))  # Добавляем вложения самого репоста
+            nested = entry.get("copy_history")  # Получаем вложенный copy_history
+            total += count_copy_history_attachments(nested) if nested else 0  # Добавляем вложения вложенных репостов
+        return total  # Возвращаем итоговое количество вложений
+
+    def serialize_copy_history(entries: object) -> List[Dict]:  # Рекурсивно нормализует репосты и их вложения
+        prepared: List[Dict] = []  # Готовим список репостов
+        if not isinstance(entries, list):  # Проверяем формат входных данных
+            return prepared  # Возвращаем пустой список при ошибке
+        for entry in entries:  # Перебираем репосты
+            if not isinstance(entry, dict):  # Проверяем тип элемента
+                continue  # Пропускаем некорректные записи
+            serialized = dict(entry)  # Копируем словарь репоста
+            serialized["attachments"] = enrich_attachments_list(entry.get("attachments", []))  # Нормализуем вложения репоста
+            serialized["copy_history"] = serialize_copy_history(entry.get("copy_history")) if entry.get("copy_history") else []  # Рекурсивно обрабатываем вложенные репосты
+            prepared.append(serialized)  # Добавляем репост в итоговый список
+        return prepared  # Возвращаем сериализованные репосты
+
+    def decorate_message_preview(message: Dict) -> Dict:  # Добавляет публичные ссылки во вложения последних сообщений
+        if not isinstance(message, dict):  # Проверяем формат сообщения
+            return {}  # Возвращаем пустой словарь при ошибке
+        prepared = dict(message)  # Копируем сообщение, чтобы не менять оригинал
+        prepared["attachments"] = enrich_attachments_list(message.get("attachments", []))  # Нормализуем вложения сообщения
+        prepared["copy_history"] = serialize_copy_history(message.get("copy_history")) if message.get("copy_history") else []  # Нормализуем репосты
+        reply_block = message.get("reply") or message.get("reply_message")  # Получаем блок ответа
+        if isinstance(reply_block, dict):  # Проверяем наличие ответа
+            reply_copy = dict(reply_block)  # Копируем блок
+            reply_copy["attachments"] = enrich_attachments_list(reply_block.get("attachments", []))  # Нормализуем вложения ответа
+            prepared["reply"] = reply_copy  # Подменяем блок ответа нормализованной копией
+        return prepared  # Возвращаем подготовленное сообщение
 
     def serialize_service_event(row: Dict) -> Dict[str, object]:
         return {
@@ -827,7 +1123,7 @@ def build_dashboard_app(
         reply = {  # Готовим словарь ответа
             "id": row.get("reply_message_id"),  # ID исходного сообщения
             "text": row.get("reply_message_text"),  # Текст исходного сообщения
-            "attachments": json.loads(row.get("reply_message_attachments") or "[]"),  # Вложения исходного сообщения
+            "attachments": enrich_attachments_list(json.loads(row.get("reply_message_attachments") or "[]")),  # Вложения исходного сообщения с публичными ссылками
             "from_id": row.get("reply_message_from_id"),  # Автор исходного сообщения
             "from_name": row.get("reply_message_from_name"),  # Имя автора исходного сообщения
             "from_avatar": row.get("reply_message_from_avatar"),  # Аватар автора исходного сообщения
@@ -835,10 +1131,13 @@ def build_dashboard_app(
         if isinstance(reply_payload, dict) and not (reply["id"] or reply["text"] or reply["from_id"]):  # Проверяем, нужно ли дополнить данными из payload
             reply["id"] = reply_payload.get("id")  # Подставляем ID исходного сообщения из payload
             reply["text"] = reply_payload.get("text")  # Подставляем текст исходного сообщения
-            reply["attachments"] = reply_payload.get("attachments", []) if isinstance(reply_payload.get("attachments"), list) else []  # Подставляем вложения исходного сообщения
+            reply["attachments"] = enrich_attachments_list(reply_payload.get("attachments", []) if isinstance(reply_payload.get("attachments"), list) else [])  # Подставляем вложения исходного сообщения
             reply["from_id"] = reply_payload.get("from_id")  # Подставляем автора исходного сообщения
             reply["from_name"] = reply_payload.get("from_name")  # Подставляем имя автора исходного сообщения
             reply["from_avatar"] = reply_payload.get("from_avatar")  # Подставляем аватар автора исходного сообщения
+        attachments = enrich_attachments_list(json.loads(row.get("attachments") or "[]"))  # Подготавливаем вложения с публичными ссылками
+
+        copy_history = serialize_copy_history(raw_payload.get("copy_history")) if isinstance(raw_payload, dict) else []  # Сериализуем репосты и вложения
         return {  # Формируем итоговый словарь лога
             "id": row.get("id"),  # ID записи
             "created_at": localize_iso(row.get("created_at")),  # Локальное время создания в ISO-формате
@@ -853,7 +1152,9 @@ def build_dashboard_app(
             "reply": reply,  # Структурированный блок ответа
             "is_bot": row.get("is_bot", 0),  # Флаг, что автор — бот или сообщество
             "text": row.get("text"),  # Текст
-            "attachments": json.loads(row.get("attachments") or "[]"),  # Вложения
+            "attachments": attachments,  # Вложения с публичными ссылками
+            "copy_history": copy_history,  # Репосты с вложениями
+            "attachments_total": len(attachments) + count_copy_history_attachments(copy_history),  # Общее количество вложений в сообщении и репостах
             "payload": raw_payload,  # Сырой payload
         }  # Конец словаря лога
 
@@ -899,6 +1200,18 @@ def build_dashboard_app(
         messages = [serialize_log(row) for row in event_logger.fetch_messages(peer_id=peer_id, limit=limit)]  # Запрашиваем логи
         log_service_event(200, f"Отдаём JSON с логами peer_id={peer_id} и лимитом {limit}")  # Логируем успешную отдачу логов
         return jsonify({"items": messages, "peer_id": peer_id})  # Возвращаем JSON с логами
+
+    @app.route("/attachments/<path:subpath>")
+    def serve_attachment(subpath: str):  # Отдаем сохраненное вложение из папки
+        target_path = (ATTACHMENTS_ROOT / subpath).resolve()  # Строим полный путь до файла
+        if not str(target_path).startswith(str(ATTACHMENTS_ROOT)):  # Проверяем, что путь внутри директории вложений
+            log_service_event(403, "Запрос вложения вне разрешенной директории отклонен")  # Пишем предупреждение в сервисные логи
+            return "Недоступно", 403  # Возвращаем ошибку доступа
+        if not target_path.exists():  # Проверяем наличие файла
+            log_service_event(404, f"Файл вложения не найден: {subpath}")  # Фиксируем отсутствие файла
+            return "Файл не найден", 404  # Отдаем 404
+        relative = target_path.relative_to(ATTACHMENTS_ROOT)  # Получаем относительный путь
+        return send_from_directory(ATTACHMENTS_ROOT, relative.as_posix())  # Отдаем файл через Flask
 
     @app.route("/api/logs/clear", methods=["POST"])
     def clear_logs():
