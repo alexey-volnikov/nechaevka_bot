@@ -1,0 +1,296 @@
+<!doctype html> <!-- Объявляем тип документа -->
+<html lang="ru"> <!-- Указываем язык страницы -->
+<head> <!-- Начало заголовка страницы -->
+  <meta charset="UTF-8" /> <!-- Кодировка UTF-8 для поддержки русского -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" /> <!-- Масштабирование для мобильных -->
+  <title>VK Bot Dashboard</title> <!-- Заголовок вкладки -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" /> <!-- Подключаем Bootstrap -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" /> <!-- Оптимизируем загрузку шрифта -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /> <!-- Разрешаем кросс-доменную загрузку шрифта -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" /> <!-- Подключаем шрифт Inter -->
+  <style> /* Начало пользовательских стилей */
+    body { background: #0f172a; color: #e2e8f0; font-family: "Inter", system-ui, -apple-system, sans-serif; } /* Фон и текст */
+    .glass { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; backdrop-filter: blur(10px); } /* Стиль стекла */
+    .hero { background: radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.1), transparent 35%), radial-gradient(circle at 80% 0%, rgba(94, 234, 212, 0.08), transparent 30%); } /* Подсветка героя */
+    .badge-soft { background: rgba(99, 102, 241, 0.15); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.35); } /* Мягкий бейдж */
+    .metric { font-size: 32px; font-weight: 700; } /* Размер цифр метрик */
+    .metric-sub { color: #94a3b8; font-size: 14px; } /* Подпись метрик */
+    .card-title { font-weight: 700; letter-spacing: 0.02em; } /* Заголовок карточек */
+    .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачный фон таблицы */
+    .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатая таблица */
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.4); color: #cbd5e1; font-size: 13px; } /* Пилюли статуса */
+    .stat-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; } /* Точка индикатора */
+    .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
+    .chart-card { min-height: 360px; } /* Минимальная высота графика */
+  </style> <!-- Конец пользовательских стилей -->
+</head> <!-- Конец заголовка -->
+<body class="pb-5"> <!-- Тело страницы с нижним отступом -->
+  <div class="container py-4"> <!-- Контейнер страницы -->
+    <div class="p-4 p-md-5 mb-4 hero glass shadow-soft"> <!-- Блок героя -->
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-3"> <!-- Верхняя строка героя -->
+        <div> <!-- Левая часть -->
+          <div class="d-inline-flex align-items-center gap-2 mb-2"> <!-- Бейджи статуса -->
+            <span class="pill"> <!-- Пилюля статуса -->
+              <span class="stat-dot bg-info"></span> <!-- Точка состояния -->
+              Мониторинг активен <!-- Текст статуса -->
+            </span> <!-- Конец пилюли -->
+            <span class="pill" id="demo-badge" style="display: none;"> <!-- Пилюля демо -->
+              <span class="stat-dot bg-warning"></span> <!-- Точка демо -->
+              Демо-режим <!-- Подпись демо -->
+            </span> <!-- Конец пилюли демо -->
+          </div> <!-- Конец блока бейджей -->
+          <h1 class="fw-bold mb-2">Дашборд VK-бота</h1> <!-- Заголовок героя -->
+          <p class="text-secondary mb-0">Живые метрики лонгпулла, графики и последние сообщения без отправки от лица сообщества.</p> <!-- Подзаголовок -->
+        </div> <!-- Конец левой части -->
+        <div class="text-end"> <!-- Правая часть -->
+          <div class="card glass shadow-soft px-4 py-3"> <!-- Карточка информации -->
+            <div class="text-secondary small">Сообщество</div> <!-- Подпись -->
+            <div class="fw-semibold" id="group-name">—</div> <!-- Имя сообщества -->
+            <div class="text-secondary small" id="group-id">—</div> <!-- ID или адрес -->
+            <div class="text-secondary small" id="group-members">—</div> <!-- Количество участников -->
+          </div> <!-- Конец карточки -->
+        </div> <!-- Конец правой части -->
+      </div> <!-- Конец верхней строки героя -->
+    </div> <!-- Конец героя -->
+
+    <div class="row g-4 mb-4"> <!-- Строка метрик -->
+      <div class="col-12 col-md-3"> <!-- Колонка событий -->
+        <div class="glass p-4 shadow-soft h-100"> <!-- Карточка -->
+          <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
+            <div class="card-title">События</div> <!-- Текст -->
+            <span class="badge-soft badge rounded-pill">Live</span> <!-- Бейдж -->
+          </div> <!-- Конец заголовка -->
+          <div class="metric" id="events-count">0</div> <!-- Число событий -->
+          <div class="metric-sub">Всего получено</div> <!-- Подпись -->
+        </div> <!-- Конец карточки -->
+      </div> <!-- Конец колонки -->
+      <div class="col-12 col-md-3"> <!-- Колонка сообщений -->
+        <div class="glass p-4 shadow-soft h-100"> <!-- Карточка -->
+          <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
+            <div class="card-title">Сообщения</div> <!-- Текст -->
+            <span class="badge bg-info text-dark">Входящие</span> <!-- Бейдж -->
+          </div> <!-- Конец заголовка -->
+          <div class="metric" id="messages-count">0</div> <!-- Число сообщений -->
+          <div class="metric-sub">Новые за сессию</div> <!-- Подпись -->
+        </div> <!-- Конец карточки -->
+      </div> <!-- Конец колонки -->
+      <div class="col-12 col-md-3"> <!-- Колонка участников -->
+        <div class="glass p-4 shadow-soft h-100"> <!-- Карточка -->
+          <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
+            <div class="card-title">Участники</div> <!-- Текст -->
+            <span class="badge bg-success">Чаты</span> <!-- Бейдж -->
+          </div> <!-- Конец заголовка -->
+          <div class="metric" id="invites-count">0</div> <!-- Число событий -->
+          <div class="metric-sub">Приглашения / удаления</div> <!-- Подпись -->
+        </div> <!-- Конец карточки -->
+      </div> <!-- Конец колонки -->
+      <div class="col-12 col-md-3"> <!-- Колонка ошибок -->
+        <div class="glass p-4 shadow-soft h-100"> <!-- Карточка -->
+          <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
+            <div class="card-title">Ошибки</div> <!-- Текст -->
+            <span class="badge bg-danger">Лог</span> <!-- Бейдж -->
+          </div> <!-- Конец заголовка -->
+          <div class="metric" id="errors-count">0</div> <!-- Число ошибок -->
+          <div class="metric-sub">Исключения лонгпулла</div> <!-- Подпись -->
+        </div> <!-- Конец карточки -->
+      </div> <!-- Конец колонки -->
+    </div> <!-- Конец строки метрик -->
+
+    <div class="row g-4"> <!-- Основная сетка -->
+      <div class="col-12 col-lg-7"> <!-- Колонка с графиком -->
+        <div class="glass p-4 shadow-soft chart-card"> <!-- Карточка графика -->
+          <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок графика -->
+            <div>
+              <div class="card-title mb-1">Динамика событий</div> <!-- Название -->
+              <div class="text-secondary small">Обновляется каждые 3 секунды</div> <!-- Подпись -->
+            </div>
+            <span class="pill">
+              <span class="stat-dot bg-info"></span> <!-- Точка -->
+              Лонгпулл активен <!-- Подпись -->
+            </span>
+          </div> <!-- Конец заголовка -->
+          <canvas id="events-chart" height="260"></canvas> <!-- Полотно графика -->
+        </div> <!-- Конец карточки графика -->
+      </div> <!-- Конец колонки графика -->
+      <div class="col-12 col-lg-5"> <!-- Колонка последних сообщений -->
+        <div class="glass p-4 shadow-soft h-100"> <!-- Карточка сообщений -->
+          <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок -->
+            <div>
+              <div class="card-title mb-1">Последние сообщения</div> <!-- Название -->
+              <div class="text-secondary small">Отображаем последние 10 событий</div> <!-- Подпись -->
+            </div>
+            <span class="badge-soft badge rounded-pill">READ ONLY</span> <!-- Бейдж readonly -->
+          </div> <!-- Конец заголовка -->
+          <div class="table-responsive"> <!-- Обертка таблицы -->
+            <table class="table table-sm table-striped align-middle mb-0"> <!-- Таблица сообщений -->
+              <thead class="text-secondary"> <!-- Заголовок таблицы -->
+                <tr>
+                  <th>peer_id</th> <!-- Заголовок столбца -->
+                  <th>from_id</th> <!-- Заголовок столбца -->
+                  <th>Текст</th> <!-- Заголовок столбца -->
+                </tr>
+              </thead>
+              <tbody id="messages-body"> <!-- Тело таблицы -->
+                <tr>
+                  <td colspan="3" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
+                </tr>
+              </tbody>
+            </table> <!-- Конец таблицы -->
+          </div> <!-- Конец обертки таблицы -->
+        </div> <!-- Конец карточки сообщений -->
+      </div> <!-- Конец колонки сообщений -->
+    </div> <!-- Конец основной сетки -->
+
+    <div class="row g-4 mt-4"> <!-- Вторая строка -->
+      <div class="col-12 col-xl-6"> <!-- Колонка диалогов -->
+        <div class="glass p-4 shadow-soft h-100"> <!-- Карточка диалогов -->
+          <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок -->
+            <div class="card-title mb-1">Диалоги и чаты</div> <!-- Название -->
+            <span class="badge bg-secondary">Read-only</span> <!-- Бейдж -->
+          </div> <!-- Конец заголовка -->
+          <div class="table-responsive"> <!-- Обертка таблицы -->
+            <table class="table table-striped align-middle mb-0"> <!-- Таблица диалогов -->
+              <thead class="text-secondary"> <!-- Заголовок -->
+                <tr>
+                  <th>peer_id</th> <!-- Заголовок -->
+                  <th>Тип</th> <!-- Заголовок -->
+                  <th>Название</th> <!-- Заголовок -->
+                </tr>
+              </thead>
+              <tbody id="conversations-body"> <!-- Тело -->
+                <tr>
+                  <td colspan="3" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
+                </tr>
+              </tbody>
+            </table> <!-- Конец таблицы -->
+          </div> <!-- Конец обертки -->
+        </div> <!-- Конец карточки -->
+      </div> <!-- Конец колонки -->
+      <div class="col-12 col-xl-6"> <!-- Колонка заметок -->
+        <div class="glass p-4 shadow-soft h-100"> <!-- Карточка заметок -->
+          <div class="card-title mb-3">Памятка безопасности</div> <!-- Заголовок -->
+          <ul class="text-secondary small mb-0"> <!-- Список -->
+            <li>Токен хранится только в `.env`, не коммитится и не выводится на страницу.</li> <!-- Пункт -->
+            <li>Бот читает события, но не отправляет сообщения в чатах.</li> <!-- Пункт -->
+            <li>Если включен демо-режим (`DEMO_MODE=1`), данные берутся из примеров.</li> <!-- Пункт -->
+            <li>Для live режима убедитесь, что порт из `.env` открыт в Windows или WSL.</li> <!-- Пункт -->
+          </ul> <!-- Конец списка -->
+        </div> <!-- Конец карточки -->
+      </div> <!-- Конец колонки -->
+    </div> <!-- Конец второй строки -->
+  </div> <!-- Конец контейнера -->
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script> <!-- Подключаем Chart.js -->
+  <script> // Начало скрипта
+    const initialStats = JSON.parse('{{ initial_stats|safe }}'); // Читаем стартовые метрики из шаблона
+    const initialGroup = JSON.parse('{{ initial_group|safe }}'); // Читаем информацию о сообществе
+    const initialConversations = JSON.parse('{{ initial_conversations|safe }}'); // Читаем список диалогов
+    const demoMode = {{ 'true' if demo_mode else 'false' }}; // Флаг демо-режима
+
+    const eventsEl = document.getElementById('events-count'); // Находим элемент событий
+    const messagesEl = document.getElementById('messages-count'); // Находим элемент сообщений
+    const invitesEl = document.getElementById('invites-count'); // Находим элемент приглашений
+    const errorsEl = document.getElementById('errors-count'); // Находим элемент ошибок
+    const messagesBody = document.getElementById('messages-body'); // Тело таблицы сообщений
+    const conversationsBody = document.getElementById('conversations-body'); // Тело таблицы диалогов
+    const groupNameEl = document.getElementById('group-name'); // Заголовок сообщества
+    const groupIdEl = document.getElementById('group-id'); // ID сообщества
+    const groupMembersEl = document.getElementById('group-members'); // Количество участников
+    const demoBadge = document.getElementById('demo-badge'); // Бейдж демо
+
+    if (demoMode) { // Если включен демо-режим
+      demoBadge.style.display = 'inline-flex'; // Показываем бейдж демо
+    } // Конец условия демо
+
+    const ctx = document.getElementById('events-chart'); // Получаем холст графика
+    const chart = new Chart(ctx, { // Создаем график
+      type: 'line', // Тип графика
+      data: { // Данные графика
+        labels: initialStats.timeline.map((p) => p.time), // Метки времени
+        datasets: [ // Наборы данных
+          { label: 'События', data: initialStats.timeline.map((p) => p.events), borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.25)', tension: 0.3, fill: true }, // Линия событий
+          { label: 'Сообщения', data: initialStats.timeline.map((p) => p.messages), borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.25)', tension: 0.3, fill: true }, // Линия сообщений
+          { label: 'Участники', data: initialStats.timeline.map((p) => p.invites), borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.25)', tension: 0.3, fill: true }, // Линия участников
+        ], // Конец наборов
+      }, // Конец данных
+      options: { // Настройки графика
+        plugins: { legend: { labels: { color: '#cbd5e1' } } }, // Цвет легенды
+        scales: { // Настройки осей
+          x: { ticks: { color: '#cbd5e1' }, grid: { color: 'rgba(255,255,255,0.04)' } }, // Ось X
+          y: { ticks: { color: '#cbd5e1' }, grid: { color: 'rgba(255,255,255,0.04)' } }, // Ось Y
+        }, // Конец осей
+      }, // Конец настроек
+    }); // Конец создания графика
+
+    function renderGroup(data) { // Функция вывода информации о сообществе
+      groupNameEl.textContent = data.name || '—'; // Отображаем название
+      groupIdEl.textContent = data.screen_name ? `vk.com/${data.screen_name}` : 'ID: ' + (data.id || '—'); // Отображаем адрес
+      groupMembersEl.textContent = data.members_count ? `${data.members_count} участников` : 'Участники: —'; // Отображаем участников
+    } // Конец функции
+
+    function renderMessages(messages) { // Функция отрисовки сообщений
+      messagesBody.innerHTML = ''; // Очищаем тело таблицы
+      if (!messages.length) { // Если пусто
+        messagesBody.innerHTML = '<tr><td colspan="3" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
+        return; // Выходим
+      } // Конец проверки пустоты
+      messages.slice().reverse().forEach((msg) => { // Перебираем сообщения в обратном порядке
+        const row = document.createElement('tr'); // Создаем строку
+        row.innerHTML = `<td>${msg.peer_id ?? '—'}</td><td>${msg.from_id ?? '—'}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки
+        messagesBody.appendChild(row); // Добавляем строку в таблицу
+      }); // Конец цикла
+    } // Конец функции
+
+    function renderConversations(convs) { // Функция отрисовки диалогов
+      conversationsBody.innerHTML = ''; // Очищаем таблицу
+      if (!convs.length) { // Если нет данных
+        conversationsBody.innerHTML = '<tr><td colspan="3" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
+        return; // Выходим
+      } // Конец проверки
+      convs.forEach((conv) => { // Перебираем диалоги
+        const peer = conv.peer || {}; // Получаем peer
+        const title = conv.chat_settings?.title || ''; // Получаем название чата
+        const type = peer.type || 'unknown'; // Получаем тип
+        const row = document.createElement('tr'); // Создаем строку
+        row.innerHTML = `<td>${peer.id ?? '—'}</td><td>${type}</td><td>${title}</td>`; // Заполняем строку
+        conversationsBody.appendChild(row); // Добавляем строку
+      }); // Конец цикла
+    } // Конец функции
+
+    function updateMetrics(stats) { // Функция обновления чисел
+      eventsEl.textContent = stats.events; // Обновляем количество событий
+      messagesEl.textContent = stats.messages; // Обновляем количество сообщений
+      invitesEl.textContent = stats.invites; // Обновляем количество приглашений
+      errorsEl.textContent = stats.errors; // Обновляем количество ошибок
+      renderMessages(stats.last_messages || []); // Обновляем таблицу сообщений
+      chart.data.labels = stats.timeline.map((p) => p.time); // Обновляем метки графика
+      chart.data.datasets[0].data = stats.timeline.map((p) => p.events); // Обновляем линию событий
+      chart.data.datasets[1].data = stats.timeline.map((p) => p.messages); // Обновляем линию сообщений
+      chart.data.datasets[2].data = stats.timeline.map((p) => p.invites); // Обновляем линию участников
+      chart.update(); // Перерисовываем график
+    } // Конец функции
+
+    function bootstrapPage() { // Инициализация страницы
+      renderGroup(initialGroup || {}); // Показываем данные сообщества
+      renderConversations(initialConversations || []); // Показываем диалоги
+      updateMetrics(initialStats || { timeline: [] }); // Показываем метрики
+    } // Конец функции
+
+    async function poll() { // Функция периодического опроса
+      try { // Пытаемся отправить запрос
+        const [statsRes, overviewRes] = await Promise.all([fetch('/api/stats'), fetch('/api/overview')]); // Запрашиваем статистику и обзор
+        const stats = await statsRes.json(); // Читаем JSON статистики
+        const overview = await overviewRes.json(); // Читаем JSON обзора
+        updateMetrics(stats); // Обновляем метрики
+        renderGroup(overview.group || {}); // Обновляем информацию о сообществе
+        renderConversations(overview.conversations || []); // Обновляем диалоги
+      } catch (err) { // В случае ошибки
+        console.error('Ошибка обновления дашборда', err); // Пишем ошибку в консоль
+      } // Конец обработки ошибки
+    } // Конец функции
+
+    bootstrapPage(); // Запускаем инициализацию
+    setInterval(poll, 3000); // Опрос каждые 3 секунды
+  </script> <!-- Конец скрипта -->
+</body> <!-- Конец тела -->
+</html> <!-- Конец документа -->
