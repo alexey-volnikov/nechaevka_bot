@@ -40,6 +40,7 @@
       <div class="d-flex flex-wrap gap-2"> <!-- Правая часть с кнопками -->
         <a href="/" class="btn btn-outline-light">Вернуться к дашборду</a> <!-- Кнопка назад -->
         <button id="refresh-btn" class="btn btn-info text-dark">Обновить</button> <!-- Кнопка обновления -->
+        <button id="clear-btn" class="btn btn-outline-light">Очистить логи</button> <!-- Кнопка очистки логов сообщений -->
       </div> <!-- Конец правой части -->
     </div> <!-- Конец заголовка страницы -->
 
@@ -182,6 +183,7 @@
     const peerFilter = document.getElementById('peer-filter'); // Селектор чатов
     const limitInput = document.getElementById('limit-input'); // Поле лимита
     const refreshBtn = document.getElementById('refresh-btn'); // Кнопка обновления
+    const clearBtn = document.getElementById('clear-btn'); // Кнопка очистки логов сообщений
     const filtersForm = document.getElementById('filters-form'); // Форма фильтров
     const serviceBody = document.getElementById('service-logs-body'); // Тело таблицы сервисных логов
     const serviceTypeSelect = document.getElementById('service-type'); // Селектор типа сервисных событий
@@ -316,6 +318,19 @@
       } // Конец обработки
     } // Конец функции обновления
 
+    async function clearLogs() { // Функция полной очистки логов сообщений
+      const confirmed = window.confirm('Очистить все логи сообщений? Это действие удалит записи без возможности восстановления.'); // Спрашиваем подтверждение пользователя
+      if (!confirmed) { // Проверяем отказ
+        return; // Прерываем выполнение при отмене
+      } // Конец проверки подтверждения
+      try { // Пытаемся выполнить запрос
+        await fetch('/api/logs/clear', { method: 'POST' }); // Отправляем POST-запрос на очистку логов сообщений
+        await refreshLogs(); // Перерисовываем таблицу после очистки
+      } catch (err) { // Обработка ошибок
+        console.error('Не удалось очистить логи сообщений', err); // Пишем ошибку в консоль
+      } // Конец обработки
+    } // Конец функции очистки логов сообщений
+
     async function refreshServiceLogs() { // Функция обновления сервисных логов
       try { // Блок попытки
         const params = {}; // Готовим параметры
@@ -338,6 +353,10 @@
     } // Конец функции обновления сервисных логов
 
     async function clearServiceLogs() { // Функция очистки сервисных логов
+      const confirmed = window.confirm('Очистить все сервисные логи? Это действие нельзя отменить.'); // Запрашиваем подтверждение пользователя
+      if (!confirmed) { // Проверяем отмену
+        return; // Прерываем выполнение при отказе
+      } // Конец проверки подтверждения
       try { // Пытаемся выполнить запрос
         await fetch('/api/service-logs/clear', { method: 'POST' }); // Отправляем POST очистки
         serviceOffset = 0; // Сбрасываем смещение
@@ -355,6 +374,11 @@
     refreshBtn.addEventListener('click', () => { // Обработчик кнопки обновления
       refreshLogs(); // Перезапрашиваем логи
     }); // Конец обработчика кнопки
+
+    clearBtn.addEventListener('click', (event) => { // Обработчик кнопки очистки логов сообщений
+      event.preventDefault(); // Блокируем стандартное действие кнопки
+      clearLogs(); // Запускаем очистку логов сообщений
+    }); // Конец обработчика кнопки очистки
 
     serviceRefreshBtn.addEventListener('click', (event) => { // Обработчик обновления сервисных логов
       event.preventDefault(); // Отменяем действие кнопки

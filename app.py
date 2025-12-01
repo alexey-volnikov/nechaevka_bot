@@ -194,6 +194,12 @@ class EventLogger:
             )
             self._connection.commit()  # Сохраняем изменения
 
+    def clear_messages(self) -> None:
+        with self._lock:  # Начинаем потокобезопасную операцию
+            cursor = self._connection.cursor()  # Получаем курсор
+            cursor.execute("DELETE FROM events")  # Удаляем все строки таблицы событий
+            self._connection.commit()  # Фиксируем изменения после удаления
+
     def fetch_messages(self, peer_id: Optional[int] = None, limit: int = 50) -> List[Dict]:
         with self._lock:  # Начинаем безопасное чтение
             cursor = self._connection.cursor()  # Берем курсор
@@ -624,6 +630,12 @@ def build_dashboard_app(
         messages = [serialize_log(row) for row in event_logger.fetch_messages(peer_id=peer_id, limit=limit)]  # Запрашиваем логи
         log_service_event(200, f"Отдаём JSON с логами peer_id={peer_id} и лимитом {limit}")  # Логируем успешную отдачу логов
         return jsonify({"items": messages, "peer_id": peer_id})  # Возвращаем JSON с логами
+
+    @app.route("/api/logs/clear", methods=["POST"])
+    def clear_logs():
+        event_logger.clear_messages()  # Очищаем все записи событий в таблице
+        log_service_event(201, "Логи сообщений очищены через API")  # Фиксируем факт очистки в сервисных событиях
+        return jsonify({"status": "cleared"})  # Возвращаем подтверждение клиенту
 
     @app.route("/api/service-logs")
     def service_logs():
