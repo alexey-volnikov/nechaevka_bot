@@ -15,6 +15,14 @@
     .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачные ячейки */
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатость */
     .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
+    .service-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 12px; font-size: 12px; } /* Пилюля статуса */
+    .service-pill.info { background: rgba(56, 189, 248, 0.2); color: #bae6fd; border: 1px solid rgba(56, 189, 248, 0.5); } /* Цвет инфо */
+    .service-pill.warning { background: rgba(234, 179, 8, 0.2); color: #fef08a; border: 1px solid rgba(234, 179, 8, 0.5); } /* Цвет предупреждения */
+    .service-pill.error { background: rgba(248, 113, 113, 0.2); color: #fecdd3; border: 1px solid rgba(248, 113, 113, 0.5); } /* Цвет ошибки */
+    .service-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; } /* Точка индикации */
+    .service-dot.info { background: #38bdf8; } /* Цвет точки инфо */
+    .service-dot.warning { background: #fbbf24; } /* Цвет точки предупреждения */
+    .service-dot.error { background: #f87171; } /* Цвет точки ошибки */
   </style> <!-- Конец стилей -->
 </head> <!-- Конец шапки -->
 <body class="pb-5"> <!-- Тело страницы -->
@@ -54,6 +62,60 @@
       </form> <!-- Конец формы -->
     </div> <!-- Конец блока фильтров -->
 
+    <div id="service-alerts" class="glass shadow-soft p-4 mb-4"> <!-- Блок сервисных оповещений -->
+      <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-center gap-3 mb-3"> <!-- Заголовок блока -->
+        <div> <!-- Левая часть заголовка -->
+          <div class="card-title mb-1">Сервисные оповещения</div> <!-- Заголовок текста -->
+          <div class="text-secondary small">Ошибки, предупреждения и информирование о работе сервиса.</div> <!-- Подпись -->
+        </div> <!-- Конец левой части -->
+        <div class="d-flex flex-wrap gap-2"> <!-- Правая часть с кнопками -->
+          <button id="service-refresh" class="btn btn-info text-dark">Обновить</button> <!-- Кнопка обновления -->
+          <button id="service-clear" class="btn btn-outline-light">Очистить логи</button> <!-- Кнопка очистки -->
+        </div> <!-- Конец правой части -->
+      </div> <!-- Конец заголовка блока -->
+      <form id="service-filters" class="row g-3 align-items-end mb-3"> <!-- Форма фильтра сервисных логов -->
+        <div class="col-12 col-md-4"> <!-- Колонка типа события -->
+          <label class="form-label text-secondary small" for="service-type">Тип оповещения</label> <!-- Подпись -->
+          <select id="service-type" class="form-select bg-dark text-light border-secondary"> <!-- Селектор типа -->
+            <option value="">Все</option> <!-- Опция все -->
+            <option value="important">Важные (warning+error)</option> <!-- Опция важных -->
+            <option value="error">Только ошибки</option> <!-- Опция ошибок -->
+            <option value="warning">Предупреждения</option> <!-- Опция предупреждений -->
+            <option value="info">Информационные</option> <!-- Опция инфо -->
+          </select> <!-- Конец селектора -->
+        </div> <!-- Конец колонки -->
+        <div class="col-12 col-md-3"> <!-- Колонка лимита -->
+          <label class="form-label text-secondary small" for="service-limit">Лимит строк</label> <!-- Подпись -->
+          <input type="number" id="service-limit" class="form-control bg-dark text-light border-secondary" min="1" max="200" value="50" /> <!-- Поле лимита -->
+        </div> <!-- Конец колонки лимита -->
+        <div class="col-12 col-md-5"> <!-- Колонка пагинации -->
+          <div class="d-flex align-items-center gap-2"> <!-- Контейнер кнопок -->
+            <button id="service-prev" class="btn btn-outline-light flex-grow-1" type="button">Назад</button> <!-- Кнопка назад -->
+            <button id="service-next" class="btn btn-outline-light flex-grow-1" type="button">Вперед</button> <!-- Кнопка вперед -->
+            <span id="service-page" class="text-secondary small">—</span> <!-- Подпись страницы -->
+          </div> <!-- Конец контейнера -->
+        </div> <!-- Конец колонки -->
+      </form> <!-- Конец формы фильтра -->
+      <div class="table-responsive"> <!-- Обертка таблицы сервисных логов -->
+        <table class="table table-striped align-middle mb-0"> <!-- Таблица сервисных логов -->
+          <thead class="text-secondary"> <!-- Заголовок таблицы -->
+            <tr> <!-- Строка заголовка -->
+              <th>Время</th> <!-- Колонка времени -->
+              <th>Тип</th> <!-- Колонка типа -->
+              <th>Код</th> <!-- Колонка кода -->
+              <th>Пояснение</th> <!-- Колонка пояснения -->
+              <th>Сообщение</th> <!-- Колонка текста -->
+            </tr> <!-- Конец строки -->
+          </thead> <!-- Конец шапки -->
+          <tbody id="service-logs-body"> <!-- Тело таблицы сервисных логов -->
+            <tr> <!-- Плейсхолдер -->
+              <td colspan="5" class="text-secondary">Нет данных</td> <!-- Текст плейсхолдера -->
+            </tr> <!-- Конец плейсхолдера -->
+          </tbody> <!-- Конец тела -->
+        </table> <!-- Конец таблицы -->
+      </div> <!-- Конец обертки -->
+    </div> <!-- Конец блока сервисных оповещений -->
+
     <div class="glass shadow-soft p-4"> <!-- Блок таблицы -->
       <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок таблицы -->
         <div> <!-- Левая часть -->
@@ -91,12 +153,23 @@
     const initialPeers = {{ initial_peers|tojson }}; // Стартовый список чатов
     const initialPeerId = {{ initial_peer_id|tojson }}; // Стартовый peer_id
     const initialLimit = {{ initial_limit|tojson }}; // Стартовый лимит
+    const initialServiceLogs = {{ initial_service_logs|tojson }}; // Стартовые сервисные логи
 
     const logsBody = document.getElementById('logs-body'); // Тело таблицы логов
     const peerFilter = document.getElementById('peer-filter'); // Селектор чатов
     const limitInput = document.getElementById('limit-input'); // Поле лимита
     const refreshBtn = document.getElementById('refresh-btn'); // Кнопка обновления
     const filtersForm = document.getElementById('filters-form'); // Форма фильтров
+    const serviceBody = document.getElementById('service-logs-body'); // Тело таблицы сервисных логов
+    const serviceTypeSelect = document.getElementById('service-type'); // Селектор типа сервисных событий
+    const serviceLimitInput = document.getElementById('service-limit'); // Поле лимита сервисных событий
+    const servicePrevBtn = document.getElementById('service-prev'); // Кнопка назад
+    const serviceNextBtn = document.getElementById('service-next'); // Кнопка вперед
+    const servicePageLabel = document.getElementById('service-page'); // Текст пагинации
+    const serviceRefreshBtn = document.getElementById('service-refresh'); // Кнопка обновления сервисных логов
+    const serviceClearBtn = document.getElementById('service-clear'); // Кнопка очистки сервисных логов
+    let serviceOffset = 0; // Текущее смещение
+    let serviceTotal = 0; // Общее количество сервисных событий
 
     function renderPeers(peers) { // Функция отрисовки списка чатов
       peerFilter.innerHTML = '<option value="">Все чаты</option>'; // Сбрасываем селектор
@@ -130,12 +203,35 @@
       }); // Конец цикла
     } // Конец функции отрисовки
 
+    function renderServiceLogs(logs) { // Функция отрисовки сервисных оповещений
+      serviceBody.innerHTML = ''; // Очищаем тело таблицы
+      if (!logs.length) { // Проверяем наличие данных
+        serviceBody.innerHTML = '<tr><td colspan="5" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
+        return; // Завершаем функцию
+      } // Конец проверки
+      logs.forEach((log) => { // Перебираем оповещения
+        const row = document.createElement('tr'); // Создаем строку
+        const type = log.event_type || 'info'; // Определяем тип события
+        const badgeClass = `service-pill ${type}`; // Готовим класс пилюли
+        const dotClass = `service-dot ${type}`; // Готовим класс точки
+        row.innerHTML = `<td>${log.created_at ?? '—'}</td><td><span class="${badgeClass}"><span class="${dotClass}"></span>${type}</span></td><td>${log.status_code ?? '—'}</td><td>${log.description ?? '—'}</td><td>${log.message ?? ''}</td>`; // Заполняем строку
+        serviceBody.appendChild(row); // Добавляем строку в таблицу
+      }); // Конец цикла
+    } // Конец функции отрисовки сервисных логов
+
     async function fetchLogs(params) { // Функция запроса логов с сервера
       const searchParams = new URLSearchParams(params); // Создаем объект параметров
       const response = await fetch(`/api/logs?${searchParams.toString()}`); // Отправляем запрос
       const data = await response.json(); // Читаем JSON
       return data.items || []; // Возвращаем список логов
     } // Конец функции запроса
+
+    async function fetchServiceLogs(params) { // Функция запроса сервисных логов с сервера
+      const searchParams = new URLSearchParams(params); // Создаем параметры запроса
+      const response = await fetch(`/api/service-logs?${searchParams.toString()}`); // Отправляем запрос
+      const data = await response.json(); // Читаем JSON
+      return data; // Возвращаем полный ответ
+    } // Конец функции запроса сервисных логов
 
     async function refreshLogs() { // Функция обновления таблицы
       try { // Блок попытки
@@ -153,6 +249,37 @@
       } // Конец обработки
     } // Конец функции обновления
 
+    async function refreshServiceLogs() { // Функция обновления сервисных логов
+      try { // Блок попытки
+        const params = {}; // Готовим параметры
+        const limit = Number(serviceLimitInput.value) || 50; // Читаем лимит
+        if (serviceTypeSelect.value) { // Если выбран тип
+          params.event_type = serviceTypeSelect.value; // Добавляем тип
+        } // Конец условия
+        params.limit = limit; // Добавляем лимит
+        params.offset = serviceOffset; // Добавляем смещение
+        const result = await fetchServiceLogs(params); // Получаем данные
+        serviceTotal = Number(result.total || 0); // Сохраняем количество
+        renderServiceLogs(result.items || []); // Отрисовываем таблицу
+        const end = Math.min(serviceOffset + limit, serviceTotal || 0); // Считаем конец диапазона
+        servicePrevBtn.disabled = serviceOffset === 0; // Блокируем кнопку назад при нуле
+        serviceNextBtn.disabled = serviceOffset + limit >= serviceTotal; // Блокируем кнопку вперед при достижении конца
+        servicePageLabel.textContent = serviceTotal ? `Показано ${end} из ${serviceTotal}` : 'Нет данных'; // Обновляем подпись
+      } catch (err) { // Обработка ошибок
+        console.error('Не удалось обновить сервисные логи', err); // Пишем ошибку в консоль
+      } // Конец обработки
+    } // Конец функции обновления сервисных логов
+
+    async function clearServiceLogs() { // Функция очистки сервисных логов
+      try { // Пытаемся выполнить запрос
+        await fetch('/api/service-logs/clear', { method: 'POST' }); // Отправляем POST очистки
+        serviceOffset = 0; // Сбрасываем смещение
+        await refreshServiceLogs(); // Перерисовываем таблицу
+      } catch (err) { // Обработка ошибок
+        console.error('Не удалось очистить сервисные логи', err); // Пишем ошибку в консоль
+      } // Конец обработки
+    } // Конец функции очистки
+
     filtersForm.addEventListener('submit', (event) => { // Обработчик отправки формы
       event.preventDefault(); // Отменяем стандартное поведение
       refreshLogs(); // Перезапрашиваем логи
@@ -162,9 +289,44 @@
       refreshLogs(); // Перезапрашиваем логи
     }); // Конец обработчика кнопки
 
+    serviceRefreshBtn.addEventListener('click', (event) => { // Обработчик обновления сервисных логов
+      event.preventDefault(); // Отменяем действие кнопки
+      refreshServiceLogs(); // Перезапрашиваем сервисные логи
+    }); // Конец обработчика обновления
+
+    serviceClearBtn.addEventListener('click', (event) => { // Обработчик кнопки очистки
+      event.preventDefault(); // Отменяем действие кнопки
+      clearServiceLogs(); // Запускаем очистку
+    }); // Конец обработчика очистки
+
+    serviceTypeSelect.addEventListener('change', () => { // Обработчик смены типа
+      serviceOffset = 0; // Сбрасываем смещение
+      refreshServiceLogs(); // Перерисовываем данные
+    }); // Конец обработчика смены типа
+
+    serviceLimitInput.addEventListener('change', () => { // Обработчик смены лимита
+      serviceOffset = 0; // Сбрасываем смещение
+      refreshServiceLogs(); // Обновляем таблицу
+    }); // Конец обработчика смены лимита
+
+    servicePrevBtn.addEventListener('click', () => { // Обработчик кнопки назад
+      const limit = Number(serviceLimitInput.value) || 50; // Читаем лимит
+      serviceOffset = Math.max(0, serviceOffset - limit); // Уменьшаем смещение
+      refreshServiceLogs(); // Обновляем таблицу
+    }); // Конец обработчика кнопки назад
+
+    serviceNextBtn.addEventListener('click', () => { // Обработчик кнопки вперед
+      const limit = Number(serviceLimitInput.value) || 50; // Читаем лимит
+      serviceOffset += limit; // Увеличиваем смещение
+      refreshServiceLogs(); // Обновляем таблицу
+    }); // Конец обработчика кнопки вперед
+
     limitInput.value = initialLimit; // Устанавливаем стартовый лимит
     renderPeers(initialPeers || []); // Отрисовываем селектор чатов
     renderLogs(initialLogs || []); // Отрисовываем стартовые логи
+    serviceTotal = (initialServiceLogs || []).length; // Запоминаем количество стартовых сервисных логов
+    servicePageLabel.textContent = serviceTotal ? `Показано ${Math.min(serviceTotal, Number(serviceLimitInput.value) || 50)} из ${serviceTotal}` : 'Нет данных'; // Показываем подпись пагинации
+    renderServiceLogs(initialServiceLogs || []); // Отрисовываем стартовые сервисные логи
   </script> <!-- Конец скрипта -->
 </body> <!-- Конец тела -->
 </html> <!-- Конец документа -->
