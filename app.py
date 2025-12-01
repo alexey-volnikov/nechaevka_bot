@@ -974,6 +974,9 @@ def build_dashboard_app(
                 item["public_url"] = public_url  # Добавляем публичную ссылку для фронтенда
             else:  # Если публичная ссылка не собралась
                 item["public_url"] = item.get("download_url") or item.get("url")  # Оставляем исходную ссылку как fallback
+            resolved_url = item.get("public_url") or item.get("download_url") or item.get("url")  # Берем итоговую ссылку для совместимости
+            if resolved_url:  # Проверяем, что ссылка определена
+                item["url"] = resolved_url  # Явно сохраняем итоговую ссылку в поле url, чтобы фронт не терял вложения
             enriched.append(item)  # Добавляем нормализованное вложение в список
         return enriched  # Возвращаем итоговый список
 
