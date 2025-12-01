@@ -43,109 +43,122 @@
       </div> <!-- Конец правой части -->
     </div> <!-- Конец заголовка страницы -->
 
-    <div class="glass shadow-soft p-4 mb-4"> <!-- Блок фильтров -->
-      <form id="filters-form" class="row g-3 align-items-end"> <!-- Форма фильтров -->
-        <div class="col-12 col-md-5"> <!-- Колонка селектора чатов -->
-          <label class="form-label text-secondary small" for="peer-filter">Фильтр по peer_id</label> <!-- Подпись -->
-          <select id="peer-filter" name="peer_id" class="form-select bg-dark text-light border-secondary"> <!-- Селектор -->
-            <option value="">Все чаты</option> <!-- Опция по умолчанию -->
-          </select> <!-- Конец селектора -->
-        </div> <!-- Конец колонки -->
-        <div class="col-12 col-md-3"> <!-- Колонка лимита -->
-          <label class="form-label text-secondary small" for="limit-input">Лимит записей (до 1000)</label> <!-- Подпись -->
-          <input type="number" id="limit-input" name="limit" class="form-control bg-dark text-light border-secondary" min="1" max="1000" /> <!-- Поле лимита -->
-        </div> <!-- Конец колонки лимита -->
-        <div class="col-12 col-md-4 d-flex gap-2"> <!-- Колонка кнопок -->
-          <button type="submit" class="btn btn-primary flex-grow-1">Применить фильтр</button> <!-- Кнопка отправки -->
-          <a href="/logs/full" class="btn btn-outline-light">Сбросить</a> <!-- Кнопка сброса -->
-        </div> <!-- Конец колонки кнопок -->
-      </form> <!-- Конец формы -->
-    </div> <!-- Конец блока фильтров -->
+    <ul class="nav nav-pills mb-4 gap-2 flex-wrap"> <!-- Панель вкладок -->
+      <li class="nav-item"> <!-- Пункт вкладки сообщений -->
+        <button id="messages-tab-btn" class="nav-link active text-light bg-primary" type="button">Логи сообщений</button> <!-- Кнопка вкладки сообщений -->
+      </li> <!-- Конец пункта вкладки сообщений -->
+      <li class="nav-item"> <!-- Пункт вкладки сервисных логов -->
+        <button id="service-tab-btn" class="nav-link text-light bg-dark border border-secondary" type="button">Сервисные логи</button> <!-- Кнопка вкладки сервисных логов -->
+      </li> <!-- Конец пункта вкладки сервисных логов -->
+    </ul> <!-- Конец панели вкладок -->
 
-    <div id="service-alerts" class="glass shadow-soft p-4 mb-4"> <!-- Блок сервисных оповещений -->
-      <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-center gap-3 mb-3"> <!-- Заголовок блока -->
-        <div> <!-- Левая часть заголовка -->
-          <div class="card-title mb-1">Сервисные оповещения</div> <!-- Заголовок текста -->
-          <div class="text-secondary small">Ошибки, предупреждения и информирование о работе сервиса.</div> <!-- Подпись -->
-        </div> <!-- Конец левой части -->
-        <div class="d-flex flex-wrap gap-2"> <!-- Правая часть с кнопками -->
-          <button id="service-refresh" class="btn btn-info text-dark">Обновить</button> <!-- Кнопка обновления -->
-          <button id="service-clear" class="btn btn-outline-light">Очистить логи</button> <!-- Кнопка очистки -->
-        </div> <!-- Конец правой части -->
-      </div> <!-- Конец заголовка блока -->
-      <form id="service-filters" class="row g-3 align-items-end mb-3"> <!-- Форма фильтра сервисных логов -->
-        <div class="col-12 col-md-4"> <!-- Колонка типа события -->
-          <label class="form-label text-secondary small" for="service-type">Тип оповещения</label> <!-- Подпись -->
-          <select id="service-type" class="form-select bg-dark text-light border-secondary"> <!-- Селектор типа -->
-            <option value="">Все</option> <!-- Опция все -->
-            <option value="important">Важные (warning+error)</option> <!-- Опция важных -->
-            <option value="error">Только ошибки</option> <!-- Опция ошибок -->
-            <option value="warning">Предупреждения</option> <!-- Опция предупреждений -->
-            <option value="info">Информационные</option> <!-- Опция инфо -->
-          </select> <!-- Конец селектора -->
-        </div> <!-- Конец колонки -->
-        <div class="col-12 col-md-3"> <!-- Колонка лимита -->
-          <label class="form-label text-secondary small" for="service-limit">Лимит строк</label> <!-- Подпись -->
-          <input type="number" id="service-limit" class="form-control bg-dark text-light border-secondary" min="1" max="200" value="50" /> <!-- Поле лимита -->
-        </div> <!-- Конец колонки лимита -->
-        <div class="col-12 col-md-5"> <!-- Колонка пагинации -->
-          <div class="d-flex align-items-center gap-2"> <!-- Контейнер кнопок -->
-            <button id="service-prev" class="btn btn-outline-light flex-grow-1" type="button">Назад</button> <!-- Кнопка назад -->
-            <button id="service-next" class="btn btn-outline-light flex-grow-1" type="button">Вперед</button> <!-- Кнопка вперед -->
-            <span id="service-page" class="text-secondary small">—</span> <!-- Подпись страницы -->
-          </div> <!-- Конец контейнера -->
-        </div> <!-- Конец колонки -->
-      </form> <!-- Конец формы фильтра -->
-      <div class="table-responsive"> <!-- Обертка таблицы сервисных логов -->
-        <table class="table table-striped align-middle mb-0"> <!-- Таблица сервисных логов -->
-          <thead class="text-secondary"> <!-- Заголовок таблицы -->
-            <tr> <!-- Строка заголовка -->
-              <th>Время</th> <!-- Колонка времени -->
-              <th>Тип</th> <!-- Колонка типа -->
-              <th>Код</th> <!-- Колонка кода -->
-              <th>Пояснение</th> <!-- Колонка пояснения -->
-              <th>Сообщение</th> <!-- Колонка текста -->
-            </tr> <!-- Конец строки -->
-          </thead> <!-- Конец шапки -->
-          <tbody id="service-logs-body"> <!-- Тело таблицы сервисных логов -->
-            <tr> <!-- Плейсхолдер -->
-              <td colspan="5" class="text-secondary">Нет данных</td> <!-- Текст плейсхолдера -->
-            </tr> <!-- Конец плейсхолдера -->
-          </tbody> <!-- Конец тела -->
-        </table> <!-- Конец таблицы -->
-      </div> <!-- Конец обертки -->
-    </div> <!-- Конец блока сервисных оповещений -->
+    <div id="messages-section" class="d-block"> <!-- Секция логов сообщений -->
+      <div class="glass shadow-soft p-4 mb-4"> <!-- Блок фильтров -->
+        <form id="filters-form" class="row g-3 align-items-end"> <!-- Форма фильтров -->
+          <div class="col-12 col-md-5"> <!-- Колонка селектора чатов -->
+            <label class="form-label text-secondary small" for="peer-filter">Фильтр по peer_id</label> <!-- Подпись -->
+            <select id="peer-filter" name="peer_id" class="form-select bg-dark text-light border-secondary"> <!-- Селектор -->
+              <option value="">Все чаты</option> <!-- Опция по умолчанию -->
+            </select> <!-- Конец селектора -->
+          </div> <!-- Конец колонки -->
+          <div class="col-12 col-md-3"> <!-- Колонка лимита -->
+            <label class="form-label text-secondary small" for="limit-input">Лимит записей (до 1000)</label> <!-- Подпись -->
+            <input type="number" id="limit-input" name="limit" class="form-control bg-dark text-light border-secondary" min="1" max="1000" /> <!-- Поле лимита -->
+          </div> <!-- Конец колонки лимита -->
+          <div class="col-12 col-md-4 d-flex gap-2"> <!-- Колонка кнопок -->
+            <button type="submit" class="btn btn-primary flex-grow-1">Применить фильтр</button> <!-- Кнопка отправки -->
+            <a href="/logs/full" class="btn btn-outline-light">Сбросить</a> <!-- Кнопка сброса -->
+          </div> <!-- Конец колонки кнопок -->
+        </form> <!-- Конец формы -->
+      </div> <!-- Конец блока фильтров -->
 
-    <div class="glass shadow-soft p-4"> <!-- Блок таблицы -->
-      <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок таблицы -->
-        <div> <!-- Левая часть -->
-          <div class="card-title mb-1">Логи сообщений</div> <!-- Название -->
-          <div class="text-secondary small">Содержимое базы с именами, чатами и вложениями.</div> <!-- Подпись -->
-        </div> <!-- Конец левой части -->
-        <span class="badge bg-secondary">READ ONLY</span> <!-- Бейдж режима -->
-      </div> <!-- Конец заголовка таблицы -->
-      <div class="table-responsive"> <!-- Обертка таблицы -->
-        <table class="table table-striped align-middle mb-0"> <!-- Таблица -->
-          <thead class="text-secondary"> <!-- Шапка -->
-            <tr> <!-- Строка заголовков -->
-              <th>Время</th> <!-- Колонка времени -->
-              <th>Чат</th> <!-- Колонка чата -->
-              <th>Отправитель</th> <!-- Колонка автора -->
-              <th>Бот?</th> <!-- Колонка бота -->
-              <th>Ответ на</th> <!-- Колонка ответа -->
-              <th>Вложения</th> <!-- Колонка вложений -->
-              <th>Текст</th> <!-- Колонка текста -->
-              <th>ID</th> <!-- Колонка ID -->
-            </tr> <!-- Конец строки заголовков -->
-          </thead> <!-- Конец шапки -->
-          <tbody id="logs-body"> <!-- Тело таблицы -->
-            <tr> <!-- Плейсхолдер -->
-              <td colspan="8" class="text-secondary">Нет данных</td> <!-- Текст плейсхолдера -->
-            </tr> <!-- Конец плейсхолдера -->
-          </tbody> <!-- Конец тела таблицы -->
-        </table> <!-- Конец таблицы -->
-      </div> <!-- Конец обертки таблицы -->
-    </div> <!-- Конец блока таблицы -->
+      <div class="glass shadow-soft p-4"> <!-- Блок таблицы -->
+        <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок таблицы -->
+          <div> <!-- Левая часть -->
+            <div class="card-title mb-1">Логи сообщений</div> <!-- Название -->
+            <div class="text-secondary small">Содержимое базы с именами, чатами и вложениями.</div> <!-- Подпись -->
+          </div> <!-- Конец левой части -->
+          <span class="badge bg-secondary">READ ONLY</span> <!-- Бейдж режима -->
+        </div> <!-- Конец заголовка таблицы -->
+        <div class="table-responsive"> <!-- Обертка таблицы -->
+          <table class="table table-striped align-middle mb-0"> <!-- Таблица -->
+            <thead class="text-secondary"> <!-- Шапка -->
+              <tr> <!-- Строка заголовков -->
+                <th>Время</th> <!-- Колонка времени -->
+                <th>Чат</th> <!-- Колонка чата -->
+                <th>Отправитель</th> <!-- Колонка автора -->
+                <th>Бот?</th> <!-- Колонка бота -->
+                <th>Ответ на</th> <!-- Колонка ответа -->
+                <th>Вложения</th> <!-- Колонка вложений -->
+                <th>Текст</th> <!-- Колонка текста -->
+                <th>ID</th> <!-- Колонка ID -->
+              </tr> <!-- Конец строки заголовков -->
+            </thead> <!-- Конец шапки -->
+            <tbody id="logs-body"> <!-- Тело таблицы -->
+              <tr> <!-- Плейсхолдер -->
+                <td colspan="8" class="text-secondary">Нет данных</td> <!-- Текст плейсхолдера -->
+              </tr> <!-- Конец плейсхолдера -->
+            </tbody> <!-- Конец тела таблицы -->
+          </table> <!-- Конец таблицы -->
+        </div> <!-- Конец обертки таблицы -->
+      </div> <!-- Конец блока таблицы -->
+    </div> <!-- Конец секции логов сообщений -->
+
+    <div id="service-section" class="d-none"> <!-- Секция сервисных логов -->
+      <div id="service-alerts" class="glass shadow-soft p-4"> <!-- Блок сервисных оповещений -->
+        <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-center gap-3 mb-3"> <!-- Заголовок блока -->
+          <div> <!-- Левая часть заголовка -->
+            <div class="card-title mb-1">Сервисные оповещения</div> <!-- Заголовок текста -->
+            <div class="text-secondary small">Ошибки, предупреждения и информирование о работе сервиса.</div> <!-- Подпись -->
+          </div> <!-- Конец левой части -->
+          <div class="d-flex flex-wrap gap-2"> <!-- Правая часть с кнопками -->
+            <button id="service-refresh" class="btn btn-info text-dark">Обновить</button> <!-- Кнопка обновления -->
+            <button id="service-clear" class="btn btn-outline-light">Очистить логи</button> <!-- Кнопка очистки -->
+          </div> <!-- Конец правой части -->
+        </div> <!-- Конец заголовка блока -->
+        <form id="service-filters" class="row g-3 align-items-end mb-3"> <!-- Форма фильтра сервисных логов -->
+          <div class="col-12 col-md-4"> <!-- Колонка типа события -->
+            <label class="form-label text-secondary small" for="service-type">Тип оповещения</label> <!-- Подпись -->
+            <select id="service-type" class="form-select bg-dark text-light border-secondary"> <!-- Селектор типа -->
+              <option value="">Все</option> <!-- Опция все -->
+              <option value="important">Важные (warning+error)</option> <!-- Опция важных -->
+              <option value="error">Только ошибки</option> <!-- Опция ошибок -->
+              <option value="warning">Предупреждения</option> <!-- Опция предупреждений -->
+              <option value="info">Информационные</option> <!-- Опция инфо -->
+            </select> <!-- Конец селектора -->
+          </div> <!-- Конец колонки -->
+          <div class="col-12 col-md-3"> <!-- Колонка лимита -->
+            <label class="form-label text-secondary small" for="service-limit">Лимит строк</label> <!-- Подпись -->
+            <input type="number" id="service-limit" class="form-control bg-dark text-light border-secondary" min="1" max="200" value="50" /> <!-- Поле лимита -->
+          </div> <!-- Конец колонки лимита -->
+          <div class="col-12 col-md-5"> <!-- Колонка пагинации -->
+            <div class="d-flex align-items-center gap-2"> <!-- Контейнер кнопок -->
+              <button id="service-prev" class="btn btn-outline-light flex-grow-1" type="button">Назад</button> <!-- Кнопка назад -->
+              <button id="service-next" class="btn btn-outline-light flex-grow-1" type="button">Вперед</button> <!-- Кнопка вперед -->
+              <span id="service-page" class="text-secondary small">—</span> <!-- Подпись страницы -->
+            </div> <!-- Конец контейнера -->
+          </div> <!-- Конец колонки -->
+        </form> <!-- Конец формы фильтра -->
+        <div class="table-responsive"> <!-- Обертка таблицы сервисных логов -->
+          <table class="table table-striped align-middle mb-0"> <!-- Таблица сервисных логов -->
+            <thead class="text-secondary"> <!-- Заголовок таблицы -->
+              <tr> <!-- Строка заголовка -->
+                <th>Время</th> <!-- Колонка времени -->
+                <th>Тип</th> <!-- Колонка типа -->
+                <th>Код</th> <!-- Колонка кода -->
+                <th>Пояснение</th> <!-- Колонка пояснения -->
+                <th>Сообщение</th> <!-- Колонка текста -->
+              </tr> <!-- Конец строки -->
+            </thead> <!-- Конец шапки -->
+            <tbody id="service-logs-body"> <!-- Тело таблицы сервисных логов -->
+              <tr> <!-- Плейсхолдер -->
+                <td colspan="5" class="text-secondary">Нет данных</td> <!-- Текст плейсхолдера -->
+              </tr> <!-- Конец плейсхолдера -->
+            </tbody> <!-- Конец тела -->
+          </table> <!-- Конец таблицы -->
+        </div> <!-- Конец обертки -->
+      </div> <!-- Конец блока сервисных оповещений -->
+    </div> <!-- Конец секции сервисных логов -->
   </div> <!-- Конец контейнера -->
 
   <script> // Начало скрипта
@@ -168,8 +181,34 @@
     const servicePageLabel = document.getElementById('service-page'); // Текст пагинации
     const serviceRefreshBtn = document.getElementById('service-refresh'); // Кнопка обновления сервисных логов
     const serviceClearBtn = document.getElementById('service-clear'); // Кнопка очистки сервисных логов
+    const messagesSection = document.getElementById('messages-section'); // Секция логов сообщений
+    const serviceSection = document.getElementById('service-section'); // Секция сервисных логов
+    const messagesTabBtn = document.getElementById('messages-tab-btn'); // Кнопка вкладки сообщений
+    const serviceTabBtn = document.getElementById('service-tab-btn'); // Кнопка вкладки сервисных логов
     let serviceOffset = 0; // Текущее смещение
     let serviceTotal = 0; // Общее количество сервисных событий
+
+    function switchToMessages() { // Функция показа вкладки сообщений
+      messagesSection.classList.remove('d-none'); // Убираем скрытие секции сообщений
+      messagesSection.classList.add('d-block'); // Добавляем показ секции сообщений
+      serviceSection.classList.add('d-none'); // Скрываем секцию сервисных логов
+      serviceSection.classList.remove('d-block'); // Убираем класс показа сервисных логов
+      messagesTabBtn.classList.add('active', 'bg-primary'); // Подсвечиваем кнопку сообщений
+      messagesTabBtn.classList.remove('bg-dark', 'border', 'border-secondary'); // Убираем стили неактивной кнопки
+      serviceTabBtn.classList.remove('active', 'bg-primary'); // Убираем активность с сервисной вкладки
+      serviceTabBtn.classList.add('bg-dark', 'border', 'border-secondary'); // Добавляем стили неактивной кнопки сервисной вкладки
+    } // Конец функции переключения на сообщения
+
+    function switchToService() { // Функция показа вкладки сервисных логов
+      serviceSection.classList.remove('d-none'); // Убираем скрытие секции сервисных логов
+      serviceSection.classList.add('d-block'); // Добавляем показ секции сервисных логов
+      messagesSection.classList.add('d-none'); // Скрываем секцию сообщений
+      messagesSection.classList.remove('d-block'); // Убираем класс показа секции сообщений
+      serviceTabBtn.classList.add('active', 'bg-primary'); // Подсвечиваем кнопку сервисных логов
+      serviceTabBtn.classList.remove('bg-dark', 'border', 'border-secondary'); // Убираем стили неактивной кнопки сервисной вкладки
+      messagesTabBtn.classList.remove('active', 'bg-primary'); // Убираем активность с вкладки сообщений
+      messagesTabBtn.classList.add('bg-dark', 'border', 'border-secondary'); // Добавляем стили неактивной кнопки сообщений
+    } // Конец функции переключения на сервисные логи
 
     function renderPeers(peers) { // Функция отрисовки списка чатов
       peerFilter.innerHTML = '<option value="">Все чаты</option>'; // Сбрасываем селектор
@@ -321,12 +360,22 @@
       refreshServiceLogs(); // Обновляем таблицу
     }); // Конец обработчика кнопки вперед
 
+    messagesTabBtn.addEventListener('click', () => { // Обработчик переключения на вкладку сообщений
+      switchToMessages(); // Показываем секцию сообщений
+    }); // Конец обработчика вкладки сообщений
+
+    serviceTabBtn.addEventListener('click', () => { // Обработчик переключения на вкладку сервисных логов
+      switchToService(); // Показываем секцию сервисных логов
+      refreshServiceLogs(); // Перезапрашиваем сервисные логи при показе
+    }); // Конец обработчика вкладки сервисных логов
+
     limitInput.value = initialLimit; // Устанавливаем стартовый лимит
     renderPeers(initialPeers || []); // Отрисовываем селектор чатов
     renderLogs(initialLogs || []); // Отрисовываем стартовые логи
     serviceTotal = (initialServiceLogs || []).length; // Запоминаем количество стартовых сервисных логов
     servicePageLabel.textContent = serviceTotal ? `Показано ${Math.min(serviceTotal, Number(serviceLimitInput.value) || 50)} из ${serviceTotal}` : 'Нет данных'; // Показываем подпись пагинации
     renderServiceLogs(initialServiceLogs || []); // Отрисовываем стартовые сервисные логи
+    switchToMessages(); // Устанавливаем вкладку сообщений активной при загрузке
   </script> <!-- Конец скрипта -->
 </body> <!-- Конец тела -->
 </html> <!-- Конец документа -->
