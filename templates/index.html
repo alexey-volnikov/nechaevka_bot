@@ -56,7 +56,7 @@
     <div class="glass shadow-soft p-4 mb-4"> <!-- Блок важных сообщений -->
       <div class="d-flex flex-wrap align-items-center justify-content-between gap-3"> <!-- Контейнер заголовка -->
         <div> <!-- Левая часть блока -->
-          <div class="card-title mb-1">Важные сообщения</div> <!-- Заголовок блока -->
+          <div class="card-title mb-1" data-bs-toggle="tooltip" title="Здесь появляются критичные сигналы от сервиса">Важные сообщения</div> <!-- Заголовок блока с подсказкой -->
           <div class="text-secondary small">Ошибки и предупреждения сервисных процессов.</div> <!-- Подпись -->
         </div> <!-- Конец левой части -->
         <div class="d-flex align-items-center gap-2"> <!-- Правая часть -->
@@ -69,7 +69,7 @@
     <div class="glass shadow-soft p-4 mb-4"> <!-- Блок выбора чата -->
       <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3"> <!-- Контейнер -->
         <div> <!-- Левая колонка -->
-          <div class="card-title mb-1">Источник данных</div> <!-- Заголовок -->
+          <div class="card-title mb-1" data-bs-toggle="tooltip" title="Настройте, из каких чатов получать логи">Источник данных</div> <!-- Заголовок с подсказкой -->
           <div class="text-secondary small">Выберите конкретный peer_id или смотрите сразу все сообщения.</div> <!-- Подпись -->
         </div> <!-- Конец левой колонки -->
         <div class="d-flex flex-column flex-md-row gap-2 align-items-md-center"> <!-- Контейнер селектора -->
@@ -84,7 +84,7 @@
     <div class="glass shadow-soft p-4 mb-4"> <!-- Блок информации о файле базы -->
       <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3"> <!-- Контейнер -->
         <div> <!-- Левая колонка -->
-          <div class="card-title mb-1">Файл логов событий</div> <!-- Заголовок -->
+          <div class="card-title mb-1" data-bs-toggle="tooltip" title="Локальный файл, куда пишутся все события бота">Файл логов событий</div> <!-- Заголовок с подсказкой -->
           <div class="text-secondary small">Файл автоматически создается рядом с проектом и пополняется при каждом событии.</div> <!-- Подпись -->
         </div> <!-- Конец левой колонки -->
         <div class="text-secondary small"> <!-- Правая колонка -->
@@ -98,41 +98,41 @@
     <div class="row g-4 mb-4"> <!-- Строка метрик -->
       <div class="col-12 col-md-3"> <!-- Колонка событий -->
         <div class="glass p-4 shadow-soft h-100"> <!-- Карточка -->
-          <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
-            <div class="card-title">События</div> <!-- Текст -->
-            <span class="badge-soft badge rounded-pill">Live</span> <!-- Бейдж -->
-          </div> <!-- Конец заголовка -->
-          <div class="metric" id="events-count">0</div> <!-- Число событий -->
+            <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
+              <div class="card-title" data-bs-toggle="tooltip" title="Сколько событий принято с момента запуска">События</div> <!-- Текст с подсказкой -->
+              <span class="badge-soft badge rounded-pill">Live</span> <!-- Бейдж -->
+            </div> <!-- Конец заголовка -->
+            <div class="metric" id="events-count">0</div> <!-- Число событий -->
           <div class="metric-sub">Всего получено</div> <!-- Подпись -->
         </div> <!-- Конец карточки -->
       </div> <!-- Конец колонки -->
       <div class="col-12 col-md-3"> <!-- Колонка сообщений -->
         <div class="glass p-4 shadow-soft h-100"> <!-- Карточка -->
-          <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
-            <div class="card-title">Сообщения</div> <!-- Текст -->
-            <span class="badge bg-info text-dark">Входящие</span> <!-- Бейдж -->
-          </div> <!-- Конец заголовка -->
-          <div class="metric" id="messages-count">0</div> <!-- Число сообщений -->
+            <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
+              <div class="card-title" data-bs-toggle="tooltip" title="Количество входящих сообщений">Сообщения</div> <!-- Текст с подсказкой -->
+              <span class="badge bg-info text-dark">Входящие</span> <!-- Бейдж -->
+            </div> <!-- Конец заголовка -->
+            <div class="metric" id="messages-count">0</div> <!-- Число сообщений -->
           <div class="metric-sub">Новые за сессию</div> <!-- Подпись -->
         </div> <!-- Конец карточки -->
       </div> <!-- Конец колонки -->
       <div class="col-12 col-md-3"> <!-- Колонка участников -->
         <div class="glass p-4 shadow-soft h-100"> <!-- Карточка -->
-          <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
-            <div class="card-title">Участники</div> <!-- Текст -->
-            <span class="badge bg-success">Чаты</span> <!-- Бейдж -->
-          </div> <!-- Конец заголовка -->
-          <div class="metric" id="invites-count">0</div> <!-- Число событий -->
+            <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
+              <div class="card-title" data-bs-toggle="tooltip" title="Сколько приглашений и выходов зафиксировано">Участники</div> <!-- Текст с подсказкой -->
+              <span class="badge bg-success">Чаты</span> <!-- Бейдж -->
+            </div> <!-- Конец заголовка -->
+            <div class="metric" id="invites-count">0</div> <!-- Число событий -->
           <div class="metric-sub">Приглашения / удаления</div> <!-- Подпись -->
         </div> <!-- Конец карточки -->
       </div> <!-- Конец колонки -->
       <div class="col-12 col-md-3"> <!-- Колонка ошибок -->
         <div class="glass p-4 shadow-soft h-100"> <!-- Карточка -->
-          <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
-            <div class="card-title">Ошибки</div> <!-- Текст -->
-            <span class="badge bg-danger">Лог</span> <!-- Бейдж -->
-          </div> <!-- Конец заголовка -->
-          <div class="metric" id="errors-count">0</div> <!-- Число ошибок -->
+            <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
+              <div class="card-title" data-bs-toggle="tooltip" title="Количество ошибок во время работы лонгпулла">Ошибки</div> <!-- Текст с подсказкой -->
+              <span class="badge bg-danger">Лог</span> <!-- Бейдж -->
+            </div> <!-- Конец заголовка -->
+            <div class="metric" id="errors-count">0</div> <!-- Число ошибок -->
           <div class="metric-sub">Исключения лонгпулла</div> <!-- Подпись -->
         </div> <!-- Конец карточки -->
       </div> <!-- Конец колонки -->
@@ -143,7 +143,7 @@
         <div class="glass p-4 shadow-soft chart-card"> <!-- Карточка графика -->
           <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок графика -->
             <div>
-              <div class="card-title mb-1">Динамика событий</div> <!-- Название -->
+              <div class="card-title mb-1" data-bs-toggle="tooltip" title="График скорости поступления событий">Динамика событий</div> <!-- Название с подсказкой -->
               <div class="text-secondary small">Обновляется каждые 3 секунды</div> <!-- Подпись -->
             </div>
             <span class="pill">
@@ -158,7 +158,7 @@
         <div class="glass p-4 shadow-soft h-100"> <!-- Карточка сообщений -->
             <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок -->
               <div>
-                <div class="card-title mb-1">Последние сообщения</div> <!-- Название -->
+                <div class="card-title mb-1" data-bs-toggle="tooltip" title="Свежие сообщения с сортировкой сверху вниз">Последние сообщения</div> <!-- Название с подсказкой -->
                 <div class="text-secondary small">Новые сверху, отображаем последние записи</div> <!-- Подпись с подсказкой сортировки -->
               </div>
             <div class="d-flex align-items-center gap-2"> <!-- Контейнер кнопок -->
@@ -196,7 +196,7 @@
       <div class="col-12 col-xl-6"> <!-- Колонка диалогов -->
         <div class="glass p-4 shadow-soft h-100"> <!-- Карточка диалогов -->
           <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок -->
-            <div class="card-title mb-1">Диалоги и чаты</div> <!-- Название -->
+            <div class="card-title mb-1" data-bs-toggle="tooltip" title="Список диалогов, доступных боту">Диалоги и чаты</div> <!-- Название с подсказкой -->
             <span class="badge bg-secondary">Read-only</span> <!-- Бейдж -->
           </div> <!-- Конец заголовка -->
           <div class="table-responsive"> <!-- Обертка таблицы -->
@@ -219,7 +219,7 @@
       </div> <!-- Конец колонки -->
       <div class="col-12 col-xl-6"> <!-- Колонка заметок -->
         <div class="glass p-4 shadow-soft h-100"> <!-- Карточка заметок -->
-          <div class="card-title mb-3">Памятка безопасности</div> <!-- Заголовок -->
+          <div class="card-title mb-3" data-bs-toggle="tooltip" title="Краткие советы по безопасной работе с ботом">Памятка безопасности</div> <!-- Заголовок с подсказкой -->
           <ul class="text-secondary small mb-0"> <!-- Список -->
             <li>Токен хранится только в `.env`, не коммитится и не выводится на страницу.</li> <!-- Пункт -->
             <li>Бот читает события, но не отправляет сообщения в чатах.</li> <!-- Пункт -->
@@ -231,6 +231,7 @@
     </div> <!-- Конец второй строки -->
   </div> <!-- Конец контейнера -->
 
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script> <!-- Подключаем Bootstrap JS для тултипов -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script> <!-- Подключаем Chart.js -->
   <script> // Начало скрипта
     const initialStats = {{ initial_stats|tojson }}; // Читаем стартовые метрики из шаблона без ручного парсинга, чтобы не было ошибок на кавычках
@@ -266,6 +267,9 @@
     const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: timezoneInfo.timeZone, timeZoneName: 'short' }); // Настраиваем формат вывода времени
 
     document.getElementById('timezone-badge').title = `Отображается время ${timezoneLabel}`; // Обновляем подсказку бейджа таймзоны
+
+    const tooltipTriggerList = Array.from(document.querySelectorAll('[data-bs-toggle="tooltip"]')); // Собираем все элементы, на которых нужно активировать тултипы
+    tooltipTriggerList.forEach((triggerEl) => new bootstrap.Tooltip(triggerEl)); // Инициализируем Bootstrap тултипы для каждого элемента
 
     function formatDateTime(value) { // Функция форматирования даты
       const parsed = value ? new Date(value) : null; // Создаем объект даты при наличии значения
