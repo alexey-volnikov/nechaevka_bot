@@ -50,7 +50,7 @@
   </style> <!-- Конец пользовательских стилей -->
 </head> <!-- Конец заголовка -->
 <body class="pb-5"> <!-- Тело страницы с нижним отступом -->
-  <div class="container py-4"> <!-- Контейнер страницы -->
+  <div class="container-fluid py-4"> <!-- Контейнер на всю ширину страницы -->
     <div class="p-4 p-md-5 mb-4 hero glass shadow-soft"> <!-- Блок героя -->
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-3"> <!-- Верхняя строка героя -->
         <div> <!-- Левая часть -->
@@ -121,19 +121,19 @@
     </div> <!-- Конец блока информации о файле базы -->
 
     <div class="row g-4 mb-4"> <!-- Строка метрик -->
-      <div class="col-12 col-md-3"> <!-- Колонка событий -->
+      <div class="col-12 col-lg-6"> <!-- Колонка активных участников -->
         <div class="glass p-4 shadow-soft h-100"> <!-- Карточка -->
-            <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
-              <div class="card-title" data-bs-toggle="tooltip" title="Сколько событий принято с момента запуска">События</div> <!-- Текст с подсказкой -->
+            <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок карточки -->
+              <div class="card-title" data-bs-toggle="tooltip" title="Сколько уникальных людей активно взаимодействуют">Активные участники</div> <!-- Текст с подсказкой -->
               <span class="badge-soft badge rounded-pill">Live</span> <!-- Бейдж -->
             </div> <!-- Конец заголовка -->
-            <div class="metric" id="events-count">0</div> <!-- Число событий -->
-          <div class="metric-sub">Всего получено</div> <!-- Подпись -->
+            <div class="metric" id="active-members-count">0</div> <!-- Число активных участников -->
+          <div class="metric-sub">За последние события</div> <!-- Подпись -->
         </div> <!-- Конец карточки -->
       </div> <!-- Конец колонки -->
-      <div class="col-12 col-md-3"> <!-- Колонка сообщений -->
+      <div class="col-12 col-lg-6"> <!-- Колонка сообщений -->
         <div class="glass p-4 shadow-soft h-100"> <!-- Карточка -->
-            <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
+            <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок карточки -->
               <div class="card-title" data-bs-toggle="tooltip" title="Количество входящих сообщений">Сообщения</div> <!-- Текст с подсказкой -->
               <span class="badge bg-info text-dark">Входящие</span> <!-- Бейдж -->
             </div> <!-- Конец заголовка -->
@@ -141,36 +141,15 @@
           <div class="metric-sub">Новые за сессию</div> <!-- Подпись -->
         </div> <!-- Конец карточки -->
       </div> <!-- Конец колонки -->
-      <div class="col-12 col-md-3"> <!-- Колонка участников -->
-        <div class="glass p-4 shadow-soft h-100"> <!-- Карточка -->
-            <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
-              <div class="card-title" data-bs-toggle="tooltip" title="Сколько приглашений и выходов зафиксировано">Участники</div> <!-- Текст с подсказкой -->
-              <span class="badge bg-success">Чаты</span> <!-- Бейдж -->
-            </div> <!-- Конец заголовка -->
-            <div class="metric" id="invites-count">0</div> <!-- Число событий -->
-          <div class="metric-sub">Приглашения / удаления</div> <!-- Подпись -->
-        </div> <!-- Конец карточки -->
-      </div> <!-- Конец колонки -->
-      <div class="col-12 col-md-3"> <!-- Колонка ошибок -->
-        <div class="glass p-4 shadow-soft h-100"> <!-- Карточка -->
-            <div class="d-flex justify-content-between align-items-center mb-2"> <!-- Заголовок карточки -->
-              <div class="card-title" data-bs-toggle="tooltip" title="Количество ошибок во время работы лонгпулла">Ошибки</div> <!-- Текст с подсказкой -->
-              <span class="badge bg-danger">Лог</span> <!-- Бейдж -->
-            </div> <!-- Конец заголовка -->
-            <div class="metric" id="errors-count">0</div> <!-- Число ошибок -->
-          <div class="metric-sub">Исключения лонгпулла</div> <!-- Подпись -->
-        </div> <!-- Конец карточки -->
-      </div> <!-- Конец колонки -->
     </div> <!-- Конец строки метрик -->
-
-    <div class="row g-4"> <!-- Основная сетка -->
-      <div class="col-12 col-lg-5"> <!-- Колонка с графиком (новая пропорция) -->
+    <div class="row g-4 mb-4"> <!-- Строка с графиком и диалогами -->
+      <div class="col-12 col-xl-6"> <!-- Колонка с графиком -->
         <div class="glass p-4 shadow-soft chart-card"> <!-- Карточка графика -->
-          <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок графика -->
-            <div>
-              <div class="card-title mb-1" data-bs-toggle="tooltip" title="График скорости поступления событий">Динамика событий</div> <!-- Название с подсказкой -->
+          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2"> <!-- Заголовок графика -->
+            <div> <!-- Левая часть заголовка графика -->
+              <div class="card-title mb-1" data-bs-toggle="tooltip" title="График активности участников и новых сообщений">Динамика активности</div> <!-- Название с подсказкой -->
               <div class="text-secondary small">Обновляется каждые 3 секунды</div> <!-- Подпись -->
-            </div>
+            </div> <!-- Конец левой части заголовка графика -->
             <div class="d-flex align-items-center gap-2"> <!-- Контейнер для селектора диапазона и статуса -->
               <select class="form-select form-select-sm bg-dark text-light" id="time-range-select"> <!-- Селектор временного диапазона -->
                 <option value="15">15 минут</option> <!-- Опция 15 минут -->
@@ -187,13 +166,41 @@
           <canvas id="events-chart" height="260"></canvas> <!-- Полотно графика -->
         </div> <!-- Конец карточки графика -->
       </div> <!-- Конец колонки графика -->
-      <div class="col-12 col-lg-7"> <!-- Колонка последних сообщений (новая пропорция) -->
+      <div class="col-12 col-xl-6"> <!-- Колонка диалогов -->
+        <div class="glass p-4 shadow-soft h-100"> <!-- Карточка диалогов -->
+          <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок -->
+            <div class="card-title mb-1" data-bs-toggle="tooltip" title="Список диалогов, доступных боту">Диалоги и чаты</div> <!-- Название с подсказкой -->
+            <span class="badge bg-secondary">Read-only</span> <!-- Бейдж -->
+          </div> <!-- Конец заголовка -->
+          <div class="table-responsive"> <!-- Обертка таблицы -->
+            <table class="table table-striped align-middle mb-0"> <!-- Таблица диалогов -->
+              <thead class="text-secondary"> <!-- Заголовок -->
+                <tr> <!-- Строка заголовка таблицы -->
+                  <th>peer_id</th> <!-- Заголовок идентификатора чата -->
+                  <th>Тип</th> <!-- Заголовок типа диалога -->
+                  <th>Название</th> <!-- Заголовок названия чата -->
+                  <th>Сообщений</th> <!-- Заголовок количества сообщений -->
+                </tr> <!-- Конец строки заголовка таблицы -->
+              </thead> <!-- Конец заголовка таблицы -->
+              <tbody id="conversations-body"> <!-- Тело -->
+                <tr> <!-- Строка-заглушка диалогов -->
+                  <td colspan="4" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
+                </tr> <!-- Конец строки-заглушки диалогов -->
+              </tbody> <!-- Конец тела таблицы -->
+            </table> <!-- Конец таблицы -->
+          </div> <!-- Конец обертки -->
+        </div> <!-- Конец карточки -->
+      </div> <!-- Конец колонки -->
+    </div> <!-- Конец строки с графиком и диалогами -->
+
+    <div class="row g-4"> <!-- Строка для последних сообщений в самом низу -->
+      <div class="col-12"> <!-- Единственная колонка на всю ширину -->
         <div class="glass p-4 shadow-soft h-100"> <!-- Карточка сообщений -->
-            <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок -->
-              <div>
-                <div class="card-title mb-1" data-bs-toggle="tooltip" title="Свежие сообщения с сортировкой сверху вниз">Последние сообщения</div> <!-- Название с подсказкой -->
-                <div class="text-secondary small">Новые сверху, отображаем последние записи</div> <!-- Подпись с подсказкой сортировки -->
-              </div>
+          <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок -->
+            <div> <!-- Левая часть заголовка -->
+              <div class="card-title mb-1" data-bs-toggle="tooltip" title="Свежие сообщения с сортировкой сверху вниз">Последние сообщения</div> <!-- Название с подсказкой -->
+              <div class="text-secondary small">Новые сверху, таблица растягивается на всю ширину контейнера</div> <!-- Подпись с уточнением ширины -->
+            </div> <!-- Конец левой части заголовка -->
             <div class="d-flex align-items-center gap-2"> <!-- Контейнер кнопок -->
               <span class="badge-soft badge rounded-pill" id="timezone-badge" title="">Локальное время</span> <!-- Бейдж с подсказкой о часовом поясе -->
               <span class="badge-soft badge rounded-pill">READ ONLY</span> <!-- Бейдж readonly -->
@@ -205,64 +212,25 @@
           <div class="table-responsive"> <!-- Обертка таблицы -->
             <table class="table table-sm table-striped align-middle mb-0"> <!-- Таблица сообщений -->
               <thead class="text-secondary"> <!-- Заголовок таблицы -->
-                <tr>
+                <tr> <!-- Строка заголовка -->
                   <th>Чат</th> <!-- Заголовок столбца -->
                   <th>Отправитель</th> <!-- Заголовок столбца -->
                   <th>Бот?</th> <!-- Заголовок столбца для отметки бота -->
                   <th>Ответ</th> <!-- Заголовок столбца -->
                   <th>Вложения</th> <!-- Заголовок столбца -->
                   <th>Текст</th> <!-- Заголовок столбца -->
-                </tr>
-              </thead>
+                </tr> <!-- Конец строки заголовка -->
+              </thead> <!-- Конец заголовка таблицы -->
               <tbody id="messages-body"> <!-- Тело таблицы -->
-                <tr>
+                <tr> <!-- Строка-заглушка -->
                   <td colspan="6" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
-                </tr>
-              </tbody>
+                </tr> <!-- Конец строки-заглушки -->
+              </tbody> <!-- Конец тела таблицы -->
             </table> <!-- Конец таблицы -->
           </div> <!-- Конец обертки таблицы -->
         </div> <!-- Конец карточки сообщений -->
-      </div> <!-- Конец колонки сообщений -->
-    </div> <!-- Конец основной сетки -->
-
-    <div class="row g-4 mt-4"> <!-- Вторая строка -->
-      <div class="col-12 col-xl-6"> <!-- Колонка диалогов -->
-        <div class="glass p-4 shadow-soft h-100"> <!-- Карточка диалогов -->
-          <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок -->
-            <div class="card-title mb-1" data-bs-toggle="tooltip" title="Список диалогов, доступных боту">Диалоги и чаты</div> <!-- Название с подсказкой -->
-            <span class="badge bg-secondary">Read-only</span> <!-- Бейдж -->
-          </div> <!-- Конец заголовка -->
-          <div class="table-responsive"> <!-- Обертка таблицы -->
-            <table class="table table-striped align-middle mb-0"> <!-- Таблица диалогов -->
-              <thead class="text-secondary"> <!-- Заголовок -->
-                <tr>
-                  <th>peer_id</th> <!-- Заголовок идентификатора чата -->
-                  <th>Тип</th> <!-- Заголовок типа диалога -->
-                  <th>Название</th> <!-- Заголовок названия чата -->
-                  <th>Сообщений</th> <!-- Заголовок количества сообщений -->
-                </tr>
-              </thead>
-              <tbody id="conversations-body"> <!-- Тело -->
-                <tr>
-                  <td colspan="4" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
-                </tr>
-              </tbody>
-            </table> <!-- Конец таблицы -->
-          </div> <!-- Конец обертки -->
-        </div> <!-- Конец карточки -->
-      </div> <!-- Конец колонки -->
-      <div class="col-12 col-xl-6"> <!-- Колонка заметок -->
-        <div class="glass p-4 shadow-soft h-100"> <!-- Карточка заметок -->
-          <div class="card-title mb-3" data-bs-toggle="tooltip" title="Краткие советы по безопасной работе с ботом">Памятка безопасности</div> <!-- Заголовок с подсказкой -->
-          <ul class="text-secondary small mb-0"> <!-- Список -->
-            <li>Токен хранится только в `.env`, не коммитится и не выводится на страницу.</li> <!-- Пункт -->
-            <li>Бот читает события, но не отправляет сообщения в чатах.</li> <!-- Пункт -->
-            <li>Если включен демо-режим (`DEMO_MODE=1`), данные берутся из примеров.</li> <!-- Пункт -->
-            <li>Для live режима убедитесь, что порт из `.env` открыт в Windows или WSL.</li> <!-- Пункт -->
-          </ul> <!-- Конец списка -->
-        </div> <!-- Конец карточки -->
-      </div> <!-- Конец колонки -->
-    </div> <!-- Конец второй строки -->
+      </div> <!-- Конец единственной колонки -->
+    </div> <!-- Конец строки для сообщений -->
   </div> <!-- Конец контейнера -->
 
   <div id="gallery-modal" class="gallery-backdrop"> <!-- Фон модального окна галереи -->
@@ -299,10 +267,8 @@
     const initialStorage = {{ initial_storage|tojson }}; // Читаем стартовую информацию о файле базы
     const demoMode = {{ 'true' if demo_mode else 'false' }}; // Флаг демо-режима
 
-    const eventsEl = document.getElementById('events-count'); // Находим элемент событий
+    const activeMembersEl = document.getElementById('active-members-count'); // Находим элемент активных участников
     const messagesEl = document.getElementById('messages-count'); // Находим элемент сообщений
-    const invitesEl = document.getElementById('invites-count'); // Находим элемент приглашений
-    const errorsEl = document.getElementById('errors-count'); // Находим элемент ошибок
     const messagesBody = document.getElementById('messages-body'); // Тело таблицы сообщений
     const conversationsBody = document.getElementById('conversations-body'); // Тело таблицы диалогов
     const groupNameEl = document.getElementById('group-name'); // Заголовок сообщества
@@ -381,9 +347,8 @@
       data: { // Данные графика
         labels: initialStats.timeline.map((p) => formatDateTime(p.time)), // Метки времени в локальном формате
         datasets: [ // Наборы данных
-          { label: 'События', data: initialStats.timeline.map((p) => p.events), borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.25)', tension: 0.3, fill: true }, // Линия событий
+          { label: 'Активные участники', data: initialStats.timeline.map((p) => p.invites), borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.25)', tension: 0.3, fill: true }, // Линия активных участников
           { label: 'Сообщения', data: initialStats.timeline.map((p) => p.messages), borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.25)', tension: 0.3, fill: true }, // Линия сообщений
-          { label: 'Участники', data: initialStats.timeline.map((p) => p.invites), borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.25)', tension: 0.3, fill: true }, // Линия участников
         ], // Конец наборов
       }, // Конец данных
       options: { // Настройки графика
@@ -883,18 +848,17 @@
     } // Конец функции
 
     function updateMetrics(stats) { // Функция обновления чисел
-      eventsEl.textContent = stats.events; // Обновляем количество событий
-      messagesEl.textContent = stats.messages; // Обновляем количество сообщений
-      invitesEl.textContent = stats.invites; // Обновляем количество приглашений
-      errorsEl.textContent = stats.errors; // Обновляем количество ошибок
-      chart.data.labels = stats.timeline.map((p) => formatDateTime(p.time)); // Обновляем метки графика в локальном формате
-      chart.data.datasets[0].data = stats.timeline.map((p) => p.events); // Обновляем линию событий
-      chart.data.datasets[1].data = stats.timeline.map((p) => p.messages); // Обновляем линию сообщений
-      chart.data.datasets[2].data = stats.timeline.map((p) => p.invites); // Обновляем линию участников
+      const safeStats = stats || {}; // Нормализуем объект статистики
+      const safeTimeline = Array.isArray(safeStats.timeline) ? safeStats.timeline : []; // Готовим безопасный массив таймлайна
+      activeMembersEl.textContent = safeStats.invites ?? 0; // Обновляем количество активных участников
+      messagesEl.textContent = safeStats.messages ?? 0; // Обновляем количество сообщений
+      chart.data.labels = safeTimeline.map((p) => formatDateTime(p.time)); // Обновляем метки графика в локальном формате
+      chart.data.datasets[0].data = safeTimeline.map((p) => p.invites ?? 0); // Обновляем линию активных участников
+      chart.data.datasets[1].data = safeTimeline.map((p) => p.messages ?? 0); // Обновляем линию сообщений
       chart.update(); // Перерисовываем график
-      if (stats.range_minutes && timeRangeSelect) { // Если в ответе есть диапазон и селектор существует
-        selectedRange = Number(stats.range_minutes); // Обновляем выбранный диапазон
-        timeRangeSelect.value = String(stats.range_minutes); // Синхронизируем значение селектора
+      if (safeStats.range_minutes && timeRangeSelect) { // Если в ответе есть диапазон и селектор существует
+        selectedRange = Number(safeStats.range_minutes); // Обновляем выбранный диапазон
+        timeRangeSelect.value = String(safeStats.range_minutes); // Синхронизируем значение селектора
       } // Конец проверки диапазона
     } // Конец функции
 
