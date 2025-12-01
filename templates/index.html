@@ -45,7 +45,7 @@
         <div class="text-end"> <!-- Правая часть -->
           <div class="card glass shadow-soft px-4 py-3"> <!-- Карточка информации -->
             <div class="text-secondary small">Сообщество</div> <!-- Подпись -->
-            <div class="fw-semibold" id="group-name">—</div> <!-- Имя сообщества -->
+            <div class="fw-semibold text-light" id="group-name">—</div> <!-- Имя сообщества с более контрастным цветом -->
             <div class="text-secondary small" id="group-id">—</div> <!-- ID или адрес -->
             <div class="text-secondary small" id="group-members">—</div> <!-- Количество участников -->
           </div> <!-- Конец карточки -->
@@ -143,12 +143,17 @@
       </div> <!-- Конец колонки графика -->
       <div class="col-12 col-lg-5"> <!-- Колонка последних сообщений -->
         <div class="glass p-4 shadow-soft h-100"> <!-- Карточка сообщений -->
-          <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок -->
-            <div>
-              <div class="card-title mb-1">Последние сообщения</div> <!-- Название -->
-              <div class="text-secondary small">Отображаем последние 10 событий</div> <!-- Подпись -->
-            </div>
-            <span class="badge-soft badge rounded-pill">READ ONLY</span> <!-- Бейдж readonly -->
+            <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок -->
+              <div>
+                <div class="card-title mb-1">Последние сообщения</div> <!-- Название -->
+                <div class="text-secondary small">Новые сверху, отображаем последние записи</div> <!-- Подпись с подсказкой сортировки -->
+              </div>
+            <div class="d-flex align-items-center gap-2"> <!-- Контейнер кнопок -->
+              <span class="badge-soft badge rounded-pill">READ ONLY</span> <!-- Бейдж readonly -->
+              <a href="/logs/full" class="btn btn-outline-light btn-sm"> <!-- Кнопка просмотра всех сообщений -->
+                Посмотреть все <!-- Текст кнопки -->
+              </a> <!-- Конец кнопки -->
+            </div> <!-- Конец контейнера кнопок -->
           </div> <!-- Конец заголовка -->
           <div class="table-responsive"> <!-- Обертка таблицы -->
             <table class="table table-sm table-striped align-middle mb-0"> <!-- Таблица сообщений -->
@@ -273,7 +278,7 @@
         messagesBody.innerHTML = '<tr><td colspan="6" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
         return; // Выходим
       } // Конец проверки пустоты
-      messages.slice().reverse().forEach((msg) => { // Перебираем сообщения в обратном порядке
+      messages.forEach((msg) => { // Перебираем сообщения по порядку от новых к старым
         const row = document.createElement('tr'); // Создаем строку
         const attachments = Array.isArray(msg.attachments) ? msg.attachments.length : 0; // Считаем вложения
         const botBadge = msg.is_bot ? 'Да' : 'Нет'; // Определяем, является ли автор ботом

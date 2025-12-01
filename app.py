@@ -342,6 +342,36 @@ def build_dashboard_app(
 ) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")  # Создаем Flask-приложение
 
+    def detect_peer_type(peer_id: Optional[int]) -> str:
+        return "chat" if isinstance(peer_id, int) and peer_id >= 2000000000 else "user" if isinstance(peer_id, int) and peer_id > 0 else "group" if isinstance(peer_id, int) and peer_id < 0 else "unknown"  # Определяем тип чата по peer_id
+
+    def merge_conversations(seed_conversations: List[Dict], peer_rows: List[Dict]) -> List[Dict]:
+        combined: Dict[int, Dict] = {}  # Словарь для объединения по peer_id
+        for conv in seed_conversations or []:  # Перебираем исходные диалоги
+            conversation_body = conv.get("conversation", conv) if isinstance(conv, dict) else {}  # Извлекаем тело диалога
+            peer = conversation_body.get("peer", {}) if isinstance(conversation_body, dict) else {}  # Достаем блок peer
+            peer_id = peer.get("id")  # Получаем ID чата
+            if peer_id is None:  # Если ID нет
+                continue  # Пропускаем запись
+            combined[peer_id] = conversation_body  # Сохраняем тело диалога без обертки
+        for peer_row in peer_rows or []:  # Перебираем чаты из базы
+            peer_id = peer_row.get("id")  # Получаем ID чата
+            if peer_id is None:  # Если ID отсутствует
+                continue  # Пропускаем
+            entry = combined.get(peer_id, {"peer": {"id": peer_id}})  # Берем существующий или создаем новый объект
+            entry_peer = entry.setdefault("peer", {"id": peer_id})  # Обеспечиваем наличие блока peer
+            entry_peer.setdefault("id", peer_id)  # Дублируем ID, если не было
+            entry_peer.setdefault("type", detect_peer_type(peer_id))  # Устанавливаем тип чата
+            if peer_row.get("title"):  # Если известно название
+                chat_settings = entry.setdefault("chat_settings", {})  # Берем блок настроек беседы
+                chat_settings.setdefault("title", peer_row.get("title"))  # Устанавливаем название, не затирая существующее
+            combined[peer_id] = entry  # Обновляем словарь
+        return list(combined.values())  # Возвращаем объединенный список
+
+    def assemble_conversations() -> List[Dict]:
+        peers_from_logs = event_logger.list_peers()  # Получаем чаты из базы
+        return merge_conversations(conversations, peers_from_logs)  # Объединяем стартовые диалоги с теми, что накопились в логах
+
     def assemble_stats() -> Dict[str, object]:
         return {
             "events": state.total_events,  # Общее количество событий
@@ -377,7 +407,7 @@ def build_dashboard_app(
         return render_template(
             "index.html",  # Шаблон дашборда
             initial_group=group_info,  # Передаем словарь с данными сообщества без лишней сериализации
-            initial_conversations=[conv.get("conversation", {}) for conv in conversations],  # Список тел диалогов
+            initial_conversations=assemble_conversations(),  # Список диалогов с учетом базы
             initial_stats=assemble_stats(),  # Начальные метрики состояния без двойного JSON
             initial_peers=event_logger.list_peers(),  # Доступные peer_id из базы
             initial_storage=assemble_storage(),  # Описание файла базы для подсказки
@@ -393,7 +423,7 @@ def build_dashboard_app(
         return jsonify(
             {
                 "group": group_info,  # Информация о сообществе
-                "conversations": [conv.get("conversation", {}) for conv in conversations],  # Список диалогов
+                "conversations": assemble_conversations(),  # Список диалогов с учетом базы
                 "peers": event_logger.list_peers(),  # Список доступных чатов
                 "storage": assemble_storage(),  # Описание файла базы
             }
@@ -402,9 +432,28 @@ def build_dashboard_app(
     @app.route("/api/logs")
     def logs():
         peer_id_raw = request.args.get("peer_id")  # Читаем peer_id из запроса
+        limit_raw = request.args.get("limit")  # Читаем лимит из запроса
         peer_id = int(peer_id_raw) if peer_id_raw else None  # Преобразуем в число при наличии
-        messages = [serialize_log(row) for row in event_logger.fetch_messages(peer_id=peer_id, limit=50)]  # Запрашиваем логи
+        limit = int(limit_raw) if limit_raw else 50  # Устанавливаем лимит выборки
+        limit = max(1, min(limit, 1000))  # Ограничиваем диапазон лимита
+        messages = [serialize_log(row) for row in event_logger.fetch_messages(peer_id=peer_id, limit=limit)]  # Запрашиваем логи
         return jsonify({"items": messages, "peer_id": peer_id})  # Возвращаем JSON с логами
+
+    @app.route("/logs/full")
+    def full_logs():
+        peer_id_raw = request.args.get("peer_id")  # Читаем фильтр чата из адресной строки
+        peer_id = int(peer_id_raw) if peer_id_raw else None  # Преобразуем в число при наличии
+        limit_raw = request.args.get("limit")  # Читаем требуемый лимит
+        limit = int(limit_raw) if limit_raw else 500  # Преобразуем лимит в число
+        limit = max(1, min(limit, 1000))  # Ограничиваем лимит безопасными рамками
+        logs_payload = [serialize_log(row) for row in event_logger.fetch_messages(peer_id=peer_id, limit=limit)]  # Получаем список логов
+        return render_template(
+            "logs.html",  # Шаблон страницы логов
+            initial_logs=logs_payload,  # Начальный список логов
+            initial_peers=event_logger.list_peers(),  # Доступные чаты для фильтрации
+            initial_peer_id=peer_id,  # Текущий выбранный чат
+            initial_limit=limit,  # Текущий выбранный лимит
+        )  # Возвращаем HTML страницы
 
     @app.route("/api/storage")
     def storage():

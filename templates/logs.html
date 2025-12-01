@@ -1,0 +1,170 @@
+<!doctype html> <!-- Объявляем тип документа -->
+<html lang="ru"> <!-- Устанавливаем язык страницы -->
+<head> <!-- Начало шапки -->
+  <meta charset="UTF-8" /> <!-- Кодировка -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" /> <!-- Адаптивность -->
+  <title>Полные логи сообщений</title> <!-- Заголовок вкладки -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" /> <!-- Bootstrap -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" /> <!-- Предзагрузка шрифтов -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /> <!-- Кросс-домен для шрифтов -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" /> <!-- Шрифт Inter -->
+  <style> /* Начало пользовательских стилей */
+    body { background: #0f172a; color: #e2e8f0; font-family: "Inter", system-ui, -apple-system, sans-serif; } /* Фон и текст */
+    .glass { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; backdrop-filter: blur(10px); } /* Стеклянный стиль */
+    .badge-soft { background: rgba(99, 102, 241, 0.15); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.35); } /* Мягкий бейдж */
+    .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачные ячейки */
+    .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатость */
+    .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
+  </style> <!-- Конец стилей -->
+</head> <!-- Конец шапки -->
+<body class="pb-5"> <!-- Тело страницы -->
+  <div class="container py-4"> <!-- Контейнер -->
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4"> <!-- Заголовок страницы -->
+      <div> <!-- Левая часть -->
+        <div class="d-inline-flex align-items-center gap-2 mb-2"> <!-- Бейдж -->
+          <span class="badge-soft badge rounded-pill"> <!-- Обертка бейджа -->
+            Полные логи <!-- Подпись -->
+          </span> <!-- Конец бейджа -->
+        </div> <!-- Конец блока бейджа -->
+        <h1 class="fw-bold mb-1">Все сообщения</h1> <!-- Заголовок -->
+        <p class="text-secondary mb-0">До 1000 последних записей с фильтрацией по чатам.</p> <!-- Подзаголовок -->
+      </div> <!-- Конец левой части -->
+      <div class="d-flex flex-wrap gap-2"> <!-- Правая часть с кнопками -->
+        <a href="/" class="btn btn-outline-light">Вернуться к дашборду</a> <!-- Кнопка назад -->
+        <button id="refresh-btn" class="btn btn-info text-dark">Обновить</button> <!-- Кнопка обновления -->
+      </div> <!-- Конец правой части -->
+    </div> <!-- Конец заголовка страницы -->
+
+    <div class="glass shadow-soft p-4 mb-4"> <!-- Блок фильтров -->
+      <form id="filters-form" class="row g-3 align-items-end"> <!-- Форма фильтров -->
+        <div class="col-12 col-md-5"> <!-- Колонка селектора чатов -->
+          <label class="form-label text-secondary small" for="peer-filter">Фильтр по peer_id</label> <!-- Подпись -->
+          <select id="peer-filter" name="peer_id" class="form-select bg-dark text-light border-secondary"> <!-- Селектор -->
+            <option value="">Все чаты</option> <!-- Опция по умолчанию -->
+          </select> <!-- Конец селектора -->
+        </div> <!-- Конец колонки -->
+        <div class="col-12 col-md-3"> <!-- Колонка лимита -->
+          <label class="form-label text-secondary small" for="limit-input">Лимит записей (до 1000)</label> <!-- Подпись -->
+          <input type="number" id="limit-input" name="limit" class="form-control bg-dark text-light border-secondary" min="1" max="1000" /> <!-- Поле лимита -->
+        </div> <!-- Конец колонки лимита -->
+        <div class="col-12 col-md-4 d-flex gap-2"> <!-- Колонка кнопок -->
+          <button type="submit" class="btn btn-primary flex-grow-1">Применить фильтр</button> <!-- Кнопка отправки -->
+          <a href="/logs/full" class="btn btn-outline-light">Сбросить</a> <!-- Кнопка сброса -->
+        </div> <!-- Конец колонки кнопок -->
+      </form> <!-- Конец формы -->
+    </div> <!-- Конец блока фильтров -->
+
+    <div class="glass shadow-soft p-4"> <!-- Блок таблицы -->
+      <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок таблицы -->
+        <div> <!-- Левая часть -->
+          <div class="card-title mb-1">Логи сообщений</div> <!-- Название -->
+          <div class="text-secondary small">Содержимое базы с именами, чатами и вложениями.</div> <!-- Подпись -->
+        </div> <!-- Конец левой части -->
+        <span class="badge bg-secondary">READ ONLY</span> <!-- Бейдж режима -->
+      </div> <!-- Конец заголовка таблицы -->
+      <div class="table-responsive"> <!-- Обертка таблицы -->
+        <table class="table table-striped align-middle mb-0"> <!-- Таблица -->
+          <thead class="text-secondary"> <!-- Шапка -->
+            <tr> <!-- Строка заголовков -->
+              <th>Время</th> <!-- Колонка времени -->
+              <th>Чат</th> <!-- Колонка чата -->
+              <th>Отправитель</th> <!-- Колонка автора -->
+              <th>Бот?</th> <!-- Колонка бота -->
+              <th>Ответ на</th> <!-- Колонка ответа -->
+              <th>Вложения</th> <!-- Колонка вложений -->
+              <th>Текст</th> <!-- Колонка текста -->
+              <th>ID</th> <!-- Колонка ID -->
+            </tr> <!-- Конец строки заголовков -->
+          </thead> <!-- Конец шапки -->
+          <tbody id="logs-body"> <!-- Тело таблицы -->
+            <tr> <!-- Плейсхолдер -->
+              <td colspan="8" class="text-secondary">Нет данных</td> <!-- Текст плейсхолдера -->
+            </tr> <!-- Конец плейсхолдера -->
+          </tbody> <!-- Конец тела таблицы -->
+        </table> <!-- Конец таблицы -->
+      </div> <!-- Конец обертки таблицы -->
+    </div> <!-- Конец блока таблицы -->
+  </div> <!-- Конец контейнера -->
+
+  <script> // Начало скрипта
+    const initialLogs = {{ initial_logs|tojson }}; // Стартовые логи из шаблона
+    const initialPeers = {{ initial_peers|tojson }}; // Стартовый список чатов
+    const initialPeerId = {{ initial_peer_id|tojson }}; // Стартовый peer_id
+    const initialLimit = {{ initial_limit|tojson }}; // Стартовый лимит
+
+    const logsBody = document.getElementById('logs-body'); // Тело таблицы логов
+    const peerFilter = document.getElementById('peer-filter'); // Селектор чатов
+    const limitInput = document.getElementById('limit-input'); // Поле лимита
+    const refreshBtn = document.getElementById('refresh-btn'); // Кнопка обновления
+    const filtersForm = document.getElementById('filters-form'); // Форма фильтров
+
+    function renderPeers(peers) { // Функция отрисовки списка чатов
+      peerFilter.innerHTML = '<option value="">Все чаты</option>'; // Сбрасываем селектор
+      (peers || []).forEach((peer) => { // Перебираем чаты
+        if (!peer || !Number.isFinite(peer.id)) return; // Пропускаем некорректные записи
+        const option = document.createElement('option'); // Создаем опцию
+        option.value = peer.id; // Значение опции
+        const label = peer.title ? `${peer.title} (ID: ${peer.id})` : peer.id; // Подпись опции
+        option.textContent = label; // Текст опции
+        peerFilter.appendChild(option); // Добавляем опцию
+      }); // Конец цикла
+      if (initialPeerId !== null) { // Если стартовый фильтр задан
+        peerFilter.value = initialPeerId; // Устанавливаем значение
+      } // Конец условия
+    } // Конец функции отрисовки чатов
+
+    function renderLogs(logs) { // Функция отрисовки таблицы логов
+      logsBody.innerHTML = ''; // Очищаем тело
+      if (!logs.length) { // Если массив пустой
+        logsBody.innerHTML = '<tr><td colspan="8" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
+        return; // Завершаем функцию
+      } // Конец проверки пустоты
+      logs.forEach((log) => { // Перебираем логи
+        const row = document.createElement('tr'); // Создаем строку
+        const attachments = Array.isArray(log.attachments) ? log.attachments.length : 0; // Считаем вложения
+        const botBadge = log.is_bot ? 'Да' : 'Нет'; // Флаг бота
+        const peerLabel = log.peer_title ? `${log.peer_title} (ID: ${log.peer_id ?? '—'})` : `${log.peer_id ?? '—'}`; // Подпись чата
+        const authorLabel = log.from_name ? `${log.from_name} (ID: ${log.from_id ?? '—'})` : `${log.from_id ?? '—'}`; // Подпись автора
+        row.innerHTML = `<td>${log.created_at ?? '—'}</td><td>${peerLabel}</td><td>${authorLabel}</td><td>${botBadge}</td><td>${log.reply_to ?? '—'}</td><td>${attachments}</td><td>${log.text ?? ''}</td><td>${log.message_id ?? '—'}</td>`; // Заполняем ячейки
+        logsBody.appendChild(row); // Добавляем строку в таблицу
+      }); // Конец цикла
+    } // Конец функции отрисовки
+
+    async function fetchLogs(params) { // Функция запроса логов с сервера
+      const searchParams = new URLSearchParams(params); // Создаем объект параметров
+      const response = await fetch(`/api/logs?${searchParams.toString()}`); // Отправляем запрос
+      const data = await response.json(); // Читаем JSON
+      return data.items || []; // Возвращаем список логов
+    } // Конец функции запроса
+
+    async function refreshLogs() { // Функция обновления таблицы
+      try { // Блок попытки
+        const params = {}; // Объект параметров запроса
+        if (peerFilter.value) { // Если выбран чат
+          params.peer_id = peerFilter.value; // Добавляем фильтр чата
+        } // Конец условия
+        if (limitInput.value) { // Если задан лимит
+          params.limit = limitInput.value; // Добавляем лимит
+        } // Конец условия
+        const logs = await fetchLogs(params); // Получаем логи с сервера
+        renderLogs(logs); // Отрисовываем таблицу
+      } catch (err) { // Обработка ошибок
+        console.error('Не удалось обновить логи', err); // Пишем в консоль
+      } // Конец обработки
+    } // Конец функции обновления
+
+    filtersForm.addEventListener('submit', (event) => { // Обработчик отправки формы
+      event.preventDefault(); // Отменяем стандартное поведение
+      refreshLogs(); // Перезапрашиваем логи
+    }); // Конец обработчика формы
+
+    refreshBtn.addEventListener('click', () => { // Обработчик кнопки обновления
+      refreshLogs(); // Перезапрашиваем логи
+    }); // Конец обработчика кнопки
+
+    limitInput.value = initialLimit; // Устанавливаем стартовый лимит
+    renderPeers(initialPeers || []); // Отрисовываем селектор чатов
+    renderLogs(initialLogs || []); // Отрисовываем стартовые логи
+  </script> <!-- Конец скрипта -->
+</body> <!-- Конец тела -->
+</html> <!-- Конец документа -->
