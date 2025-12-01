@@ -78,7 +78,10 @@
             <div class="card-title mb-1">Логи сообщений</div> <!-- Название -->
             <div class="text-secondary small">Содержимое базы с именами, чатами и вложениями.</div> <!-- Подпись -->
           </div> <!-- Конец левой части -->
-          <span class="badge bg-secondary">READ ONLY</span> <!-- Бейдж режима -->
+          <div class="d-flex align-items-center gap-2"> <!-- Контейнер бейджей -->
+            <span class="badge-soft badge rounded-pill" id="timezone-hint" title="">Локальное время</span> <!-- Бейдж с подсказкой о таймзоне -->
+            <span class="badge bg-secondary">READ ONLY</span> <!-- Бейдж режима -->
+          </div> <!-- Конец контейнера бейджей -->
         </div> <!-- Конец заголовка таблицы -->
         <div class="table-responsive"> <!-- Обертка таблицы -->
           <table class="table table-striped align-middle mb-0"> <!-- Таблица -->
@@ -188,6 +191,21 @@
     let serviceOffset = 0; // Текущее смещение
     let serviceTotal = 0; // Общее количество сервисных событий
 
+    const timezoneInfo = Intl.DateTimeFormat().resolvedOptions(); // Читаем параметры локальной таймзоны
+    const timezoneOffsetMinutes = new Date().getTimezoneOffset(); // Получаем смещение в минутах относительно UTC
+    const timezoneOffsetSign = timezoneOffsetMinutes <= 0 ? '+' : '-'; // Определяем знак смещения
+    const timezoneOffsetHours = String(Math.floor(Math.abs(timezoneOffsetMinutes) / 60)).padStart(2, '0'); // Вычисляем часы смещения
+    const timezoneOffsetRestMinutes = String(Math.abs(timezoneOffsetMinutes) % 60).padStart(2, '0'); // Вычисляем минуты смещения
+    const timezoneLabel = `UTC${timezoneOffsetSign}${timezoneOffsetHours}:${timezoneOffsetRestMinutes} (${timezoneInfo.timeZone || 'локальное время'})`; // Формируем строку подсказки
+    const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: timezoneInfo.timeZone, timeZoneName: 'short' }); // Настраиваем форматер локального времени
+
+    document.getElementById('timezone-hint').title = `Отображается время ${timezoneLabel}`; // Заполняем подсказку бейджа таймзоны
+
+    function formatDateTime(value) { // Функция форматирования даты в локальное время
+      const parsed = value ? new Date(value) : null; // Парсим строку даты
+      return parsed && !Number.isNaN(parsed.valueOf()) ? timeFormatter.format(parsed) : '—'; // Возвращаем отформатированное значение или тире
+    } // Конец функции форматирования
+
     function switchToMessages() { // Функция показа вкладки сообщений
       messagesSection.classList.remove('d-none'); // Убираем скрытие секции сообщений
       messagesSection.classList.add('d-block'); // Добавляем показ секции сообщений
@@ -237,7 +255,8 @@
         const botBadge = log.is_bot ? 'Да' : 'Нет'; // Флаг бота
         const peerLabel = log.peer_title ? `${log.peer_title} (ID: ${log.peer_id ?? '—'})` : `${log.peer_id ?? '—'}`; // Подпись чата
         const authorLabel = log.from_name ? `${log.from_name} (ID: ${log.from_id ?? '—'})` : `${log.from_id ?? '—'}`; // Подпись автора
-        row.innerHTML = `<td>${log.created_at ?? '—'}</td><td>${peerLabel}</td><td>${authorLabel}</td><td>${botBadge}</td><td>${log.reply_to ?? '—'}</td><td>${attachments}</td><td>${log.text ?? ''}</td><td>${log.message_id ?? '—'}</td>`; // Заполняем ячейки
+        const createdAt = formatDateTime(log.created_at); // Преобразуем время в локальный формат
+        row.innerHTML = `<td>${createdAt}</td><td>${peerLabel}</td><td>${authorLabel}</td><td>${botBadge}</td><td>${log.reply_to ?? '—'}</td><td>${attachments}</td><td>${log.text ?? ''}</td><td>${log.message_id ?? '—'}</td>`; // Заполняем ячейки
         logsBody.appendChild(row); // Добавляем строку в таблицу
       }); // Конец цикла
     } // Конец функции отрисовки
@@ -253,7 +272,8 @@
         const type = log.event_type || 'info'; // Определяем тип события
         const badgeClass = `service-pill ${type}`; // Готовим класс пилюли
         const dotClass = `service-dot ${type}`; // Готовим класс точки
-        row.innerHTML = `<td>${log.created_at ?? '—'}</td><td><span class="${badgeClass}"><span class="${dotClass}"></span>${type}</span></td><td>${log.status_code ?? '—'}</td><td>${log.description ?? '—'}</td><td>${log.message ?? ''}</td>`; // Заполняем строку
+        const createdAt = formatDateTime(log.created_at); // Форматируем время сервисного события
+        row.innerHTML = `<td>${createdAt}</td><td><span class="${badgeClass}"><span class="${dotClass}"></span>${type}</span></td><td>${log.status_code ?? '—'}</td><td>${log.description ?? '—'}</td><td>${log.message ?? ''}</td>`; // Заполняем строку
         serviceBody.appendChild(row); // Добавляем строку в таблицу
       }); // Конец цикла
     } // Конец функции отрисовки сервисных логов

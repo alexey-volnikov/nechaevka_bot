@@ -162,6 +162,7 @@
                 <div class="text-secondary small">Новые сверху, отображаем последние записи</div> <!-- Подпись с подсказкой сортировки -->
               </div>
             <div class="d-flex align-items-center gap-2"> <!-- Контейнер кнопок -->
+              <span class="badge-soft badge rounded-pill" id="timezone-badge" title="">Локальное время</span> <!-- Бейдж с подсказкой о часовом поясе -->
               <span class="badge-soft badge rounded-pill">READ ONLY</span> <!-- Бейдж readonly -->
               <a href="/logs/full" class="btn btn-outline-light btn-sm"> <!-- Кнопка просмотра всех сообщений -->
                 Посмотреть все <!-- Текст кнопки -->
@@ -256,6 +257,21 @@
     const importantBadge = document.getElementById('important-badge'); // Бейдж важных оповещений
     let currentPeer = ''; // Текущий выбранный peer_id
 
+    const timezoneInfo = Intl.DateTimeFormat().resolvedOptions(); // Считываем параметры локальной таймзоны браузера
+    const timezoneOffsetMinutes = new Date().getTimezoneOffset(); // Получаем смещение от UTC в минутах
+    const timezoneOffsetSign = timezoneOffsetMinutes <= 0 ? '+' : '-'; // Определяем знак смещения
+    const timezoneOffsetHours = String(Math.floor(Math.abs(timezoneOffsetMinutes) / 60)).padStart(2, '0'); // Вычисляем часы смещения с ведущим нулем
+    const timezoneOffsetRestMinutes = String(Math.abs(timezoneOffsetMinutes) % 60).padStart(2, '0'); // Вычисляем минуты смещения с ведущим нулем
+    const timezoneLabel = `UTC${timezoneOffsetSign}${timezoneOffsetHours}:${timezoneOffsetRestMinutes} (${timezoneInfo.timeZone || 'локальное время'})`; // Формируем подпись таймзоны и смещения
+    const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: timezoneInfo.timeZone, timeZoneName: 'short' }); // Настраиваем формат вывода времени
+
+    document.getElementById('timezone-badge').title = `Отображается время ${timezoneLabel}`; // Обновляем подсказку бейджа таймзоны
+
+    function formatDateTime(value) { // Функция форматирования даты
+      const parsed = value ? new Date(value) : null; // Создаем объект даты при наличии значения
+      return parsed && !Number.isNaN(parsed.valueOf()) ? timeFormatter.format(parsed) : '—'; // Возвращаем отформатированную строку или тире
+    } // Конец функции форматирования
+
     if (demoMode) { // Если включен демо-режим
       demoBadge.style.display = 'inline-flex'; // Показываем бейдж демо
     } // Конец условия демо
@@ -264,7 +280,7 @@
     const chart = new Chart(ctx, { // Создаем график
       type: 'line', // Тип графика
       data: { // Данные графика
-        labels: initialStats.timeline.map((p) => p.time), // Метки времени
+        labels: initialStats.timeline.map((p) => formatDateTime(p.time)), // Метки времени в локальном формате
         datasets: [ // Наборы данных
           { label: 'События', data: initialStats.timeline.map((p) => p.events), borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.25)', tension: 0.3, fill: true }, // Линия событий
           { label: 'Сообщения', data: initialStats.timeline.map((p) => p.messages), borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.25)', tension: 0.3, fill: true }, // Линия сообщений
@@ -348,7 +364,7 @@
       messagesEl.textContent = stats.messages; // Обновляем количество сообщений
       invitesEl.textContent = stats.invites; // Обновляем количество приглашений
       errorsEl.textContent = stats.errors; // Обновляем количество ошибок
-      chart.data.labels = stats.timeline.map((p) => p.time); // Обновляем метки графика
+      chart.data.labels = stats.timeline.map((p) => formatDateTime(p.time)); // Обновляем метки графика в локальном формате
       chart.data.datasets[0].data = stats.timeline.map((p) => p.events); // Обновляем линию событий
       chart.data.datasets[1].data = stats.timeline.map((p) => p.messages); // Обновляем линию сообщений
       chart.data.datasets[2].data = stats.timeline.map((p) => p.invites); // Обновляем линию участников

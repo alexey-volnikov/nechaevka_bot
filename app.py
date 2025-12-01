@@ -95,7 +95,8 @@ class BotState:
                 self.last_messages.pop(0)  # Удаляем самое старое сообщение при переполнении
         elif event_kind == "invite":  # Если событие связано с участниками
             self.invites += 1  # Увеличиваем счетчик приглашений/удалений
-        timestamp = datetime.utcnow().strftime("%H:%M:%S")  # Фиксируем время события в UTC
+        current_time = datetime.now().astimezone()  # Фиксируем локальное время с таймзоной
+        timestamp = current_time.isoformat()  # Сохраняем ISO-строку с информацией о зоне
         self.events_timeline.append(  # Добавляем точку для графика
             {
                 "time": timestamp,  # Время точки
@@ -161,7 +162,7 @@ class EventLogger:
         }  # Словарь с описанием хранилища
 
     def log_event(self, event_type: str, payload: Dict, peer_title: Optional[str] = None, from_name: Optional[str] = None) -> None:
-        created_at = datetime.utcnow().isoformat()  # Фиксируем время вставки
+        created_at = datetime.now().astimezone().isoformat()  # Фиксируем локальное время вставки с таймзоной
         peer_id = payload.get("peer_id")  # Берем ID чата
         from_id = payload.get("from_id")  # Берем автора
         message_id = payload.get("id")  # Берем ID сообщения
@@ -533,10 +534,17 @@ def build_dashboard_app(
     def assemble_storage() -> Dict[str, object]:
         return event_logger.describe_storage()  # Возвращаем информацию о файле базы
 
+    def localize_iso(timestamp: Optional[str]) -> Optional[str]:
+        try:  # Пытаемся преобразовать ISO-строку
+            parsed = datetime.fromisoformat(timestamp) if timestamp else None  # Парсим дату с таймзоной
+            return parsed.astimezone().isoformat() if parsed else None  # Конвертируем в локальное время и возвращаем ISO
+        except Exception:  # Обрабатываем неверный формат строки
+            return None  # Возвращаем None при ошибке
+
     def serialize_service_event(row: Dict) -> Dict[str, object]:
         return {
             "id": row.get("id"),  # ID строки
-            "created_at": row.get("created_at"),  # Локальное время создания
+            "created_at": localize_iso(row.get("created_at")),  # Локальное время создания в ISO-формате
             "event_type": row.get("event_type"),  # Тип события (info/warning/error)
             "status_code": row.get("status_code"),  # Код статуса
             "description": row.get("description"),  # Русское пояснение
@@ -546,7 +554,7 @@ def build_dashboard_app(
     def serialize_log(row: Dict) -> Dict:
         return {
             "id": row.get("id"),  # ID записи
-            "created_at": row.get("created_at"),  # Время создания
+            "created_at": localize_iso(row.get("created_at")),  # Локальное время создания в ISO-формате
             "event_type": row.get("event_type"),  # Тип события
             "peer_id": row.get("peer_id"),  # ID чата
             "peer_title": row.get("peer_title"),  # Название чата
