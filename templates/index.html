@@ -142,6 +142,7 @@
                 <tr>
                   <th>peer_id</th> <!-- Заголовок столбца -->
                   <th>from_id</th> <!-- Заголовок столбца -->
+                  <th>Бот?</th> <!-- Заголовок столбца для отметки бота -->
                   <th>Ответ на</th> <!-- Заголовок столбца -->
                   <th>Вложения</th> <!-- Заголовок столбца -->
                   <th>Текст</th> <!-- Заголовок столбца -->
@@ -149,7 +150,7 @@
               </thead>
               <tbody id="messages-body"> <!-- Тело таблицы -->
                 <tr>
-                  <td colspan="5" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
+                  <td colspan="6" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
                 </tr>
               </tbody>
             </table> <!-- Конец таблицы -->
@@ -257,7 +258,8 @@
       messages.slice().reverse().forEach((msg) => { // Перебираем сообщения в обратном порядке
         const row = document.createElement('tr'); // Создаем строку
         const attachments = Array.isArray(msg.attachments) ? msg.attachments.length : 0; // Считаем вложения
-        row.innerHTML = `<td>${msg.peer_id ?? '—'}</td><td>${msg.from_id ?? '—'}</td><td>${msg.reply_to ?? '—'}</td><td>${attachments}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки
+        const botBadge = msg.is_bot ? 'Да' : 'Нет'; // Определяем, является ли автор ботом
+        row.innerHTML = `<td>${msg.peer_id ?? '—'}</td><td>${msg.from_id ?? '—'}</td><td>${botBadge}</td><td>${msg.reply_to ?? '—'}</td><td>${attachments}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки
         messagesBody.appendChild(row); // Добавляем строку в таблицу
       }); // Конец цикла
     } // Конец функции
@@ -337,6 +339,7 @@
     }); // Конец обработчика
 
     bootstrapPage(); // Запускаем инициализацию
+    poll(); // Делаем первый запрос сразу после загрузки страницы
     setInterval(poll, 3000); // Опрос каждые 3 секунды
   </script> <!-- Конец скрипта -->
 </body> <!-- Конец тела -->

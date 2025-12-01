@@ -76,12 +76,17 @@ class EventLogger:
                     from_id INTEGER,
                     message_id INTEGER,
                     reply_to INTEGER,
+                    is_bot INTEGER DEFAULT 0,
                     text TEXT,
                     attachments TEXT,
                     payload TEXT
                 )
                 """
             )
+            cursor.execute("PRAGMA table_info(events)")  # Читаем описание колонок для миграции
+            columns = {row[1] for row in cursor.fetchall()}  # Собираем имена колонок в множество
+            if "is_bot" not in columns:  # Если колонки для флага бота нет
+                cursor.execute("ALTER TABLE events ADD COLUMN is_bot INTEGER DEFAULT 0")  # Добавляем колонку миграцией
             self._connection.commit()  # Сохраняем изменения
 
     def log_event(self, event_type: str, payload: Dict) -> None:
@@ -92,12 +97,13 @@ class EventLogger:
         reply_to = payload.get("reply_message", {}).get("from_id") if isinstance(payload.get("reply_message"), dict) else None  # Берем ID адресата ответа
         text = payload.get("text")  # Берем текст
         attachments = payload.get("attachments", [])  # Берем вложения
+        is_bot = 1 if isinstance(from_id, int) and from_id < 0 else 0  # Фиксируем, что автор — бот или сообщество
         with self._lock:  # Начинаем потокобезопасную запись
             cursor = self._connection.cursor()  # Получаем курсор
             cursor.execute(  # Выполняем вставку строки
                 """
-                INSERT INTO events (created_at, event_type, peer_id, from_id, message_id, reply_to, text, attachments, payload)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO events (created_at, event_type, peer_id, from_id, message_id, reply_to, is_bot, text, attachments, payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     created_at,  # Время вставки
@@ -106,6 +112,7 @@ class EventLogger:
                     from_id,  # Автор
                     message_id,  # ID сообщения
                     reply_to,  # Кому отвечали
+                    is_bot,  # Флаг автора-бота
                     text,  # Текст
                     json.dumps(attachments, ensure_ascii=False),  # Сериализуем вложения
                     json.dumps(payload, ensure_ascii=False),  # Сохраняем сырой payload
@@ -265,6 +272,7 @@ def build_dashboard_app(
             "from_id": row.get("from_id"),  # Автор
             "message_id": row.get("message_id"),  # ID сообщения VK
             "reply_to": row.get("reply_to"),  # Кому ответили
+            "is_bot": row.get("is_bot", 0),  # Флаг, что автор — бот или сообщество
             "text": row.get("text"),  # Текст
             "attachments": json.loads(row.get("attachments") or "[]"),  # Вложения
             "payload": json.loads(row.get("payload") or "{}"),  # Сырой payload
