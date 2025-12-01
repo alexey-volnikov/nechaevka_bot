@@ -146,10 +146,18 @@
               <div class="card-title mb-1" data-bs-toggle="tooltip" title="График скорости поступления событий">Динамика событий</div> <!-- Название с подсказкой -->
               <div class="text-secondary small">Обновляется каждые 3 секунды</div> <!-- Подпись -->
             </div>
-            <span class="pill">
-              <span class="stat-dot bg-info"></span> <!-- Точка -->
-              Лонгпулл активен <!-- Подпись -->
-            </span>
+            <div class="d-flex align-items-center gap-2"> <!-- Контейнер для селектора диапазона и статуса -->
+              <select class="form-select form-select-sm bg-dark text-light" id="time-range-select"> <!-- Селектор временного диапазона -->
+                <option value="15">15 минут</option> <!-- Опция 15 минут -->
+                <option value="60">1 час</option> <!-- Опция 1 час -->
+                <option value="360">6 часов</option> <!-- Опция 6 часов -->
+                <option value="1440">24 часа</option> <!-- Опция 24 часа -->
+              </select> <!-- Конец селектора -->
+              <span class="pill"> <!-- Индикатор статуса лонгпулла -->
+                <span class="stat-dot bg-info"></span> <!-- Точка -->
+                Лонгпулл активен <!-- Подпись -->
+              </span> <!-- Конец индикатора -->
+            </div> <!-- Конец контейнера -->
           </div> <!-- Конец заголовка -->
           <canvas id="events-chart" height="260"></canvas> <!-- Полотно графика -->
         </div> <!-- Конец карточки графика -->
@@ -257,7 +265,9 @@
     const storageSizeEl = document.getElementById('storage-size'); // Размер файла базы
     const storageStatusEl = document.getElementById('storage-status'); // Статус существования файла
     const importantBadge = document.getElementById('important-badge'); // Бейдж важных оповещений
+    const timeRangeSelect = document.getElementById('time-range-select'); // Селектор выбора диапазона времени
     let currentPeer = ''; // Текущий выбранный peer_id
+    let selectedRange = Number(initialStats?.range_minutes ?? 60); // Текущий выбранный диапазон минут
 
     const timezoneInfo = Intl.DateTimeFormat().resolvedOptions(); // Считываем параметры локальной таймзоны браузера
     const timezoneOffsetMinutes = new Date().getTimezoneOffset(); // Получаем смещение от UTC в минутах
@@ -271,6 +281,14 @@
 
     const tooltipTriggerList = Array.from(document.querySelectorAll('[data-bs-toggle="tooltip"]')); // Собираем все элементы, на которых нужно активировать тултипы
     tooltipTriggerList.forEach((triggerEl) => new bootstrap.Tooltip(triggerEl)); // Инициализируем Bootstrap тултипы для каждого элемента
+
+    if (timeRangeSelect) { // Если селектор диапазона найден
+      timeRangeSelect.value = String(selectedRange); // Устанавливаем текущее значение из стартовых данных
+      timeRangeSelect.addEventListener('change', () => { // Подписываемся на изменение диапазона
+        selectedRange = Number(timeRangeSelect.value || 60); // Обновляем выбранный диапазон
+        poll(); // Запускаем немедленное обновление данных
+      }); // Конец обработчика изменения
+    } // Конец проверки селектора
 
     function formatDateTime(value) { // Функция форматирования даты
       const parsed = value ? new Date(value) : null; // Создаем объект даты при наличии значения
@@ -387,6 +405,10 @@
       chart.data.datasets[1].data = stats.timeline.map((p) => p.messages); // Обновляем линию сообщений
       chart.data.datasets[2].data = stats.timeline.map((p) => p.invites); // Обновляем линию участников
       chart.update(); // Перерисовываем график
+      if (stats.range_minutes && timeRangeSelect) { // Если в ответе есть диапазон и селектор существует
+        selectedRange = Number(stats.range_minutes); // Обновляем выбранный диапазон
+        timeRangeSelect.value = String(stats.range_minutes); // Синхронизируем значение селектора
+      } // Конец проверки диапазона
     } // Конец функции
 
     function renderStorage(storage) { // Функция вывода информации о файле базы
@@ -416,7 +438,8 @@
       try { // Пытаемся отправить запрос
         const logsUrl = currentPeer ? `/api/logs?peer_id=${currentPeer}` : '/api/logs'; // Формируем URL логов
         const alertsUrl = '/api/service-logs?event_type=important&limit=1'; // URL для важных оповещений
-        const [statsRes, overviewRes, logsRes, alertsRes] = await Promise.all([fetch('/api/stats'), fetch('/api/overview'), fetch(logsUrl), fetch(alertsUrl)]); // Запрашиваем статистику, обзор, логи и оповещения
+        const statsUrl = `/api/stats?range=${selectedRange}`; // Формируем URL статистики с выбранным диапазоном
+        const [statsRes, overviewRes, logsRes, alertsRes] = await Promise.all([fetch(statsUrl), fetch('/api/overview'), fetch(logsUrl), fetch(alertsUrl)]); // Запрашиваем статистику, обзор, логи и оповещения
         const stats = await statsRes.json(); // Читаем JSON статистики
         const overview = await overviewRes.json(); // Читаем JSON обзора
         const logs = await logsRes.json(); // Читаем JSON логов

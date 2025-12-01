@@ -4,7 +4,7 @@ import os  # Работа с переменными окружения
 import sqlite3  # Работа с базой SQLite для логов
 import threading  # Запуск фонового потока лонгпулла
 from dataclasses import dataclass, field  # Упрощенное объявление классов состояния
-from datetime import datetime  # Фиксация времени событий для графиков
+from datetime import datetime, timedelta  # Фиксация времени событий и диапазонов
 from typing import Dict, List, Optional  # Подсказки типов для словарей и списков
 
 from logging.handlers import RotatingFileHandler  # Обработчик логов с ротацией файлов
@@ -30,6 +30,15 @@ SERVICE_STATUS_EXPLANATIONS = {  # Справочник кодов статус�
     404: "Не найдено: проверьте URL или ID",  # Описание для кода 404
     500: "Ошибка сервера: смотреть стек",  # Описание для кода 500
 }  # Справочник кодов и русских пояснений для сервисных логов
+
+def safe_int_env(value: Optional[str], fallback: int) -> int:  # Функция безопасного приведения переменных окружения к int
+    try:  # Пробуем выполнить приведение типов
+        return int(value) if value is not None else fallback  # Возвращаем число или запасное значение
+    except Exception:  # Если приведение не удалось
+        return fallback  # Возвращаем запасной вариант
+
+
+DEFAULT_TIMELINE_MINUTES = safe_int_env(os.getenv("TIMELINE_DEFAULT_MINUTES"), 60)  # Диапазон минут по умолчанию для графика
 
 
 class ServiceContextFilter(logging.Filter):  # Фильтр для добавления обязательных полей
@@ -246,6 +255,55 @@ class EventLogger:
             )
             rows = cursor.fetchall()  # Читаем результаты
         return {int(row["peer_id"]): int(row["cnt"]) for row in rows if row["peer_id"] is not None}  # Возвращаем словарь peer_id->количество
+
+    def count_messages(self, range_minutes: Optional[int] = None) -> int:
+        now = datetime.now().astimezone()  # Берем текущее локальное время
+        params: List[object] = ["message"]  # Готовим параметры запроса
+        base_query = "SELECT COUNT(*) AS cnt FROM events WHERE event_type = ?"  # Базовый запрос подсчета сообщений
+        if isinstance(range_minutes, int) and range_minutes > 0:  # Проверяем, задан ли диапазон минут
+            since = (now - timedelta(minutes=range_minutes)).isoformat()  # Вычисляем начальную точку диапазона
+            base_query += " AND created_at >= ?"  # Добавляем условие по времени
+            params.append(since)  # Добавляем значение в параметры
+        with self._lock:  # Начинаем потокобезопасное чтение
+            cursor = self._connection.cursor()  # Получаем курсор для запроса
+            cursor.execute(base_query, params)  # Выполняем запрос с параметрами
+            row = cursor.fetchone()  # Читаем единственную строку результата
+        return int(row["cnt"] if row else 0)  # Возвращаем количество или 0
+
+    def fetch_timeline(self, range_minutes: int = 60, max_points: int = 120) -> List[Dict[str, object]]:
+        safe_range = range_minutes if isinstance(range_minutes, int) and range_minutes > 0 else 60  # Нормализуем диапазон минут
+        safe_points = max(1, max_points)  # Страхуем количество точек на графике
+        bucket_minutes = max(1, (safe_range + safe_points - 1) // safe_points)  # Рассчитываем размер интервала в минутах
+        now = datetime.now().astimezone()  # Берем текущее время с таймзоной
+        since = (now - timedelta(minutes=safe_range)).isoformat()  # Вычисляем нижнюю границу по времени
+        with self._lock:  # Начинаем потокобезопасное чтение
+            cursor = self._connection.cursor()  # Получаем курсор
+            cursor.execute(  # Запрашиваем все сообщения начиная с нижней границы
+                "SELECT created_at FROM events WHERE event_type = ? AND created_at >= ? ORDER BY created_at",
+                ("message", since),
+            )
+            rows = cursor.fetchall()  # Читаем все строки
+        buckets: Dict[str, Dict[str, object]] = {}  # Готовим словарь для сгруппированных точек
+        for row in rows:  # Перебираем строки результата
+            created_raw = row.get("created_at") if isinstance(row, dict) else row[0] if row else None  # Достаем поле времени
+            try:  # Пытаемся преобразовать в datetime
+                created_at = datetime.fromisoformat(created_raw) if created_raw else None  # Парсим ISO-строку
+            except Exception:  # Если формат некорректный
+                continue  # Пропускаем запись
+            if not created_at:  # Проверяем, что дата есть
+                continue  # Пропускаем пустые
+            bucket_start = created_at.replace(second=0, microsecond=0)  # Округляем до начала минуты
+            offset = created_at.minute % bucket_minutes  # Вычисляем смещение внутри корзины
+            if offset:  # Если есть смещение
+                bucket_start -= timedelta(minutes=offset)  # Сдвигаем к началу корзины
+            bucket_key = bucket_start.isoformat()  # Формируем ключ корзины
+            bucket = buckets.setdefault(  # Получаем или создаем корзину
+                bucket_key,
+                {"time": bucket_key, "events": 0, "messages": 0, "invites": 0},  # Начальные значения
+            )
+            bucket["events"] += 1  # Увеличиваем количество событий
+            bucket["messages"] += 1  # Увеличиваем количество сообщений
+        return sorted(buckets.values(), key=lambda x: x["time"])  # Возвращаем точки, отсортированные по времени
 
 
 class ServiceEventLogger:  # Логгер сервисных событий с отдельной таблицей
@@ -554,15 +612,25 @@ def build_dashboard_app(
             conv["messages_count"] = messages_counts.get(peer_id, 0)  # Добавляем поле с количеством сообщений
         return merged  # Возвращаем список диалогов с подсчитанными сообщениями
 
-    def assemble_stats() -> Dict[str, object]:
-        return {
-            "events": state.total_events,  # Общее количество событий
-            "messages": state.new_messages,  # Количество сообщений
-            "invites": state.invites,  # Количество приглашений/удалений
-            "errors": state.errors,  # Количество ошибок
-            "last_messages": state.last_messages,  # История последних сообщений
-            "timeline": state.events_timeline,  # Точки для графиков
-        }  # Словарь статистики
+    def resolve_range_minutes(raw_value: Optional[str]) -> int:
+        try:  # Пытаемся привести значение к числу
+            parsed = int(raw_value) if raw_value is not None else DEFAULT_TIMELINE_MINUTES  # Преобразуем строку или берем дефолт
+        except Exception:  # Если приведение не удалось
+            return DEFAULT_TIMELINE_MINUTES  # Возвращаем значение по умолчанию
+        return parsed if parsed > 0 else DEFAULT_TIMELINE_MINUTES  # Возвращаем только положительные значения
+
+    def assemble_stats(range_minutes: Optional[int] = None) -> Dict[str, object]:
+        selected_range = range_minutes if isinstance(range_minutes, int) and range_minutes > 0 else DEFAULT_TIMELINE_MINUTES  # Нормализуем выбранный диапазон
+        messages_count = event_logger.count_messages(selected_range)  # Считаем сообщения за выбранный диапазон
+        return {  # Собираем словарь статистики
+            "events": messages_count,  # Количество событий за диапазон берем из количества сообщений
+            "messages": messages_count,  # Количество сообщений за диапазон
+            "invites": state.invites,  # Количество приглашений/удалений за текущую сессию
+            "errors": state.errors,  # Количество ошибок лонгпулла за текущую сессию
+            "last_messages": state.last_messages,  # История последних сообщений из оперативной памяти
+            "timeline": event_logger.fetch_timeline(selected_range),  # Точки графика из базы по диапазону
+            "range_minutes": selected_range,  # Возвращаем выбранный диапазон минут
+        }
 
     def assemble_storage() -> Dict[str, object]:
         return event_logger.describe_storage()  # Возвращаем информацию о файле базы
@@ -608,7 +676,7 @@ def build_dashboard_app(
             "index.html",  # Шаблон дашборда
             initial_group=group_info,  # Передаем словарь с данными сообщества без лишней сериализации
             initial_conversations=assemble_conversations(),  # Список диалогов с учетом базы
-            initial_stats=assemble_stats(),  # Начальные метрики состояния без двойного JSON
+            initial_stats=assemble_stats(DEFAULT_TIMELINE_MINUTES),  # Начальные метрики состояния по умолчанию
             initial_peers=event_logger.list_peers(),  # Доступные peer_id из базы
             initial_storage=assemble_storage(),  # Описание файла базы для подсказки
             demo_mode=demo_mode,  # Флаг демо для вывода на страницу
@@ -616,8 +684,10 @@ def build_dashboard_app(
 
     @app.route("/api/stats")
     def stats():
-        log_service_event(200, "Отдаём JSON со статистикой событий")  # Фиксируем успешную выдачу статистики
-        return jsonify(assemble_stats())  # Возвращаем актуальную статистику в JSON
+        range_raw = request.args.get("range") or request.args.get("minutes")  # Читаем желаемый диапазон из запроса
+        selected_range = resolve_range_minutes(range_raw)  # Нормализуем диапазон
+        log_service_event(200, f"Отдаём JSON со статистикой за {selected_range} минут")  # Фиксируем успешную выдачу статистики
+        return jsonify(assemble_stats(selected_range))  # Возвращаем актуальную статистику в JSON
 
     @app.route("/api/overview")
     def overview():
