@@ -24,6 +24,21 @@
     .service-dot.warning { background: #fbbf24; } /* Цвет точки предупреждения */
     .service-dot.error { background: #f87171; } /* Цвет точки ошибки */
     .avatar-inline { width: 1.6em; height: 1.6em; border-radius: 999px; object-fit: cover; flex-shrink: 0; } /* Класс компактной аватарки */
+    .attachment-pill { display: inline-flex; gap: 6px; align-items: center; padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.05); color: #e2e8f0; font-size: 12px; text-decoration: none; } /* Пилюля вложения */
+    .attachment-pill:hover { text-decoration: none; background: rgba(255, 255, 255, 0.08); } /* Подсветка вложения */
+    .attachment-photo { border-color: rgba(59, 130, 246, 0.5); color: #bfdbfe; } /* Цвет фото */
+    .attachment-video { border-color: rgba(244, 114, 182, 0.5); color: #fbcfe8; } /* Цвет видео */
+    .attachment-doc { border-color: rgba(74, 222, 128, 0.5); color: #bbf7d0; } /* Цвет документов */
+    .attachment-audio { border-color: rgba(56, 189, 248, 0.5); color: #bae6fd; } /* Цвет аудио */
+    .attachment-sticker { border-color: rgba(248, 180, 0, 0.6); color: #fef08a; } /* Цвет стикеров */
+    .attachment-wall { border-color: rgba(236, 72, 153, 0.6); color: #fbcfe8; } /* Цвет постов */
+    .attachment-link { border-color: rgba(14, 165, 233, 0.5); color: #bae6fd; } /* Цвет ссылок */
+    .attachment-generic { border-color: rgba(148, 163, 184, 0.5); color: #e2e8f0; } /* Цвет прочих вложений */
+    .attachment-group { display: flex; flex-wrap: wrap; gap: 6px; } /* Группа вложений */
+    .copy-block { display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; border-radius: 12px; border: 1px dashed rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.02); } /* Блок репоста */
+    .copy-header { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #cbd5e1; } /* Заголовок репоста */
+    .copy-attachments { display: flex; flex-wrap: wrap; gap: 6px; } /* Вложения репоста */
+    .content-cell { display: flex; flex-direction: column; gap: 6px; } /* Ячейка контента */
   </style> <!-- Конец стилей -->
 </head> <!-- Конец шапки -->
 <body class="pb-5"> <!-- Тело страницы -->
@@ -241,6 +256,69 @@
       return `<div class="d-flex flex-column gap-1"><div class="d-flex align-items-center gap-2">${replyLink}<span class="text-secondary small">${replyAttachmentsLabel}</span></div><div class="text-secondary small">${replyText}</div><div class="text-secondary small">${replyAuthorCell}</div></div>`; // Возвращаем HTML ячейки
     } // Конец функции сборки ответа
 
+    const attachmentTypeLabels = { photo: 'Фото', video: 'Видео', doc: 'Документ', audio_message: 'Голос', audio: 'Аудио', link: 'Ссылка', sticker: 'Стикер', wall: 'Пост', wall_reply: 'Комментарий', market: 'Товар', gift: 'Подарок', story: 'История', graffiti: 'Граффити', podcast: 'Подкаст', share: 'Репост', file: 'Файл' }; // Человекочитаемые подписи типов
+    const attachmentTypeClasses = { photo: 'attachment-photo', video: 'attachment-video', doc: 'attachment-doc', audio: 'attachment-audio', audio_message: 'attachment-audio', link: 'attachment-link', wall: 'attachment-wall', wall_reply: 'attachment-wall', sticker: 'attachment-sticker', default: 'attachment-generic' }; // Классы подсветки типов
+
+    function normalizeAttachmentLink(att) { // Функция получения ссылки на вложение
+      if (!att || typeof att !== 'object') { // Проверяем формат объекта
+        return null; // Возвращаем пустое значение
+      } // Конец проверки
+      return att.public_url || att.download_url || att.url || null; // Возвращаем ссылку или null
+    } // Конец функции
+
+    function pickAttachmentClass(type) { // Функция выбора CSS-класса
+      if (!type) { // Если тип не указан
+        return attachmentTypeClasses.default; // Возвращаем класс по умолчанию
+      } // Конец проверки
+      return attachmentTypeClasses[type] || attachmentTypeClasses.default; // Возвращаем подходящий класс или запасной
+    } // Конец функции
+
+    function buildAttachmentBadge(att) { // Функция сборки бейджа вложения
+      const type = att?.type || 'file'; // Определяем тип вложения
+      const readableType = attachmentTypeLabels[type] || type; // Находим подпись типа
+      const href = normalizeAttachmentLink(att); // Получаем ссылку для перехода
+      const caption = att?.title || att?.name || att?.doc?.title || att?.link?.title || att?.photo?.text || att?.description || ''; // Подбираем подпись
+      const shortCaption = caption ? caption.slice(0, 60) : ''; // Обрезаем подпись
+      const className = pickAttachmentClass(type); // Берем класс подсветки
+      const text = shortCaption ? `${readableType}: ${shortCaption}` : readableType; // Формируем текст
+      if (href) { // Если есть ссылка
+        return `<a class="attachment-pill ${className}" href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`; // Возвращаем кликабельный бейдж
+      } // Конец проверки
+      return `<span class="attachment-pill ${className}">${text}</span>`; // Возвращаем статичный бейдж
+    } // Конец функции
+
+    function renderAttachmentList(list) { // Функция рендера списка вложений
+      if (!Array.isArray(list) || !list.length) { // Проверяем наличие данных
+        return '<span class="text-secondary small">Нет вложений</span>'; // Плейсхолдер при пустом списке
+      } // Конец проверки
+      const badges = list.map((att) => buildAttachmentBadge(att)).join(''); // Собираем бейджи
+      return `<div class="attachment-group">${badges}</div>`; // Возвращаем контейнер
+    } // Конец функции
+
+    function renderCopyHistory(copyHistory) { // Функция рендера репостов
+      if (!Array.isArray(copyHistory) || !copyHistory.length) { // Проверяем наличие репостов
+        return ''; // Возвращаем пустую строку
+      } // Конец проверки
+      const blocks = copyHistory.map((entry) => { // Перебираем репосты
+        const source = entry.from_name ? `${entry.from_name} (ID: ${entry.from_id ?? '—'})` : `ID: ${entry.from_id ?? '—'}`; // Формируем подпись источника
+        const text = entry.text ? entry.text.slice(0, 120) : 'Без текста'; // Формируем превью текста
+        const attachmentsBlock = renderAttachmentList(entry.attachments || []); // Формируем вложения репоста
+        return `<div class="copy-block"><div class="copy-header">🔁 Репост от ${source}</div><div class="text-secondary small">${text}</div><div class="copy-attachments">${attachmentsBlock}</div></div>`; // Возвращаем карточку репоста
+      }); // Конец цикла
+      return blocks.join(''); // Возвращаем объединенный HTML
+    } // Конец функции
+
+    function buildContentCell(attachments, copyHistory) { // Функция сборки ячейки контента
+      const hasAttachments = Array.isArray(attachments) && attachments.length > 0; // Проверяем наличие вложений
+      const hasCopy = Array.isArray(copyHistory) && copyHistory.length > 0; // Проверяем наличие репостов
+      if (!hasAttachments && !hasCopy) { // Если нет данных
+        return '<span class="text-secondary">—</span>'; // Возвращаем плейсхолдер
+      } // Конец проверки
+      const attachmentsBlock = hasAttachments ? renderAttachmentList(attachments) : ''; // Собираем блок вложений
+      const copyBlock = hasCopy ? renderCopyHistory(copyHistory) : ''; // Собираем блок репостов
+      return `<div class="content-cell">${attachmentsBlock}${copyBlock}</div>`; // Возвращаем объединенную ячейку
+    } // Конец функции
+
     function switchToMessages() { // Функция показа вкладки сообщений
       messagesSection.classList.remove('d-none'); // Убираем скрытие секции сообщений
       messagesSection.classList.add('d-block'); // Добавляем показ секции сообщений
@@ -286,13 +364,13 @@
       } // Конец проверки пустоты
       logs.forEach((log) => { // Перебираем логи
         const row = document.createElement('tr'); // Создаем строку
-        const attachments = Array.isArray(log.attachments) ? log.attachments.length : 0; // Считаем вложения
+        const contentCell = buildContentCell(log.attachments, log.copy_history); // Формируем ячейку контента
         const botBadge = log.is_bot ? 'Да' : 'Нет'; // Флаг бота
         const peerLabel = log.peer_title ? `${log.peer_title} (ID: ${log.peer_id ?? '—'})` : `${log.peer_id ?? '—'}`; // Подпись чата
         const authorLabel = log.from_name ? `${log.from_name} (ID: ${log.from_id ?? '—'})` : `${log.from_id ?? '—'}`; // Подпись автора
         const createdAt = formatDateTime(log.created_at); // Преобразуем время в локальный формат
         const replyCell = buildReplyPreview(log.reply, log.peer_id); // Готовим ячейку превью исходного сообщения
-        row.innerHTML = `<td>${createdAt}</td><td>${peerLabel}</td><td>${authorLabel}</td><td>${botBadge}</td><td>${replyCell}</td><td>${attachments}</td><td>${log.text ?? ''}</td><td>${log.message_id ?? '—'}</td><td>${log.id ?? '—'}</td><td><button type="button" class="btn btn-sm btn-outline-danger delete-log-btn" data-log-id="${log.id}">Удалить</button></td>`; // Заполняем ячейки и кнопку удаления
+        row.innerHTML = `<td>${createdAt}</td><td>${peerLabel}</td><td>${authorLabel}</td><td>${botBadge}</td><td>${replyCell}</td><td>${contentCell}</td><td>${log.text ?? ''}</td><td>${log.message_id ?? '—'}</td><td>${log.id ?? '—'}</td><td><button type="button" class="btn btn-sm btn-outline-danger delete-log-btn" data-log-id="${log.id}">Удалить</button></td>`; // Заполняем ячейки и кнопку удаления
         logsBody.appendChild(row); // Добавляем строку в таблицу
       }); // Конец цикла
     } // Конец функции отрисовки

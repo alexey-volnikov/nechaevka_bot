@@ -12,7 +12,7 @@ from typing import Dict, List, Optional  # Подсказки типов для 
 from logging.handlers import RotatingFileHandler  # Обработчик логов с ротацией файлов
 
 from dotenv import load_dotenv  # Загрузка переменных окружения из .env
-from flask import Flask, jsonify, render_template, request  # Веб-сервер, рендер и разбор запросов
+from flask import Flask, jsonify, render_template, request, send_from_directory  # Веб-сервер, рендер, разбор запросов и отдача файлов
 import requests  # Загрузка файлов вложений по URL
 import vk_api  # Клиент VK API
 from vk_api.bot_longpoll import VkBotEventType, VkBotLongPoll  # Лонгпулл сообщества для чтения событий
@@ -42,6 +42,8 @@ def safe_int_env(value: Optional[str], fallback: int) -> int:  # Функция 
 
 
 DEFAULT_TIMELINE_MINUTES = safe_int_env(os.getenv("TIMELINE_DEFAULT_MINUTES"), 60)  # Диапазон минут по умолчанию для графика
+ATTACHMENTS_ROOT = Path(os.getenv("ATTACHMENTS_DIR") or os.path.join(os.getcwd(), "data", "attachments")).resolve()  # Базовая папка для вложений, доступная через веб
+ATTACHMENTS_ROOT.mkdir(parents=True, exist_ok=True)  # Создаем директорию вложений, если её нет
 
 
 class ServiceContextFilter(logging.Filter):  # Фильтр для добавления обязательных полей
@@ -498,7 +500,7 @@ class BotMonitor:
         self.user_cache: Dict[int, Dict[str, Optional[str]]] = {}  # Кэш профилей пользователей (имя и аватар)
         self.group_cache: Dict[int, Dict[str, Optional[str]]] = {}  # Кэш профилей сообществ (имя и аватар)
         self.peer_cache: Dict[int, Dict[str, Optional[str]]] = {}  # Кэш профилей чатов по peer_id
-        self.attachments_dir = Path(os.getenv("ATTACHMENTS_DIR") or os.path.join(os.getcwd(), "data", "attachments"))  # Базовая директория для сохранения вложений
+        self.attachments_dir = ATTACHMENTS_ROOT  # Используем общую директорию для вложений
         self.attachments_dir.mkdir(parents=True, exist_ok=True)  # Создаем директории для вложений при инициализации
 
     def _sanitize_filename(self, name: str, fallback: str) -> str:
@@ -605,6 +607,24 @@ class BotMonitor:
             normalized_list.append(self._normalize_attachment(attachment, peer_id, message_id))  # Сохраняем каждое вложение
         return normalized_list  # Возвращаем список с локальными путями
 
+    def _normalize_copy_history(self, copy_history: object, peer_id: Optional[int], parent_message_id: Optional[int]) -> List[Dict]:  # Нормализует список репостов и вложений
+        normalized: List[Dict] = []  # Готовим список нормализованных репостов
+        if not isinstance(copy_history, list):  # Проверяем формат входящих данных
+            return normalized  # Возвращаем пустой список при ошибке формата
+        for entry in copy_history:  # Перебираем каждый элемент copy_history
+            if not isinstance(entry, dict):  # Проверяем тип элемента
+                continue  # Пропускаем некорректные записи
+            entry_copy = dict(entry)  # Копируем исходный словарь, чтобы не менять оригинал
+            entry_copy["attachments"] = self._save_attachments(entry_copy.get("attachments", []), peer_id, entry_copy.get("id") or parent_message_id)  # Сохраняем вложения репоста
+            nested_copy = entry_copy.get("copy_history")  # Получаем вложенный copy_history, если он есть
+            entry_copy["copy_history"] = self._normalize_copy_history(nested_copy, peer_id, entry_copy.get("id") or parent_message_id) if nested_copy else []  # Рекурсивно нормализуем вложенные репосты
+            from_id = entry_copy.get("from_id")  # Получаем автора репоста
+            profile = self._resolve_sender_profile(from_id)  # Тянем имя и аватар автора
+            entry_copy["from_name"] = profile.get("name")  # Добавляем имя автора
+            entry_copy["from_avatar"] = profile.get("avatar")  # Добавляем аватар автора
+            normalized.append(entry_copy)  # Кладем готовый репост в итоговый список
+        return normalized  # Возвращаем нормализованный список репостов
+
     def start(self) -> None:
         listener_thread = threading.Thread(target=self._listen, daemon=True)  # Создаем фоновый поток
         listener_thread.start()  # Запускаем поток с лонгпуллом
@@ -634,6 +654,9 @@ class BotMonitor:
                         message["attachments"] = self._save_attachments(message.get("attachments", []), message.get("peer_id"), message.get("id"))  # Сохраняем вложения на диск и добавляем локальные пути
                         if isinstance(reply_message, dict):  # Проверяем, что есть вложения в исходном сообщении
                             reply_message["attachments"] = self._save_attachments(reply_message.get("attachments", []), message.get("peer_id"), reply_message.get("id"))  # Сохраняем вложения исходного сообщения
+                        copy_history = self._normalize_copy_history(message.get("copy_history"), message.get("peer_id"), message.get("id"))  # Нормализуем репосты и вложения внутри них
+                        if copy_history:  # Если репосты есть
+                            message["copy_history"] = copy_history  # Сохраняем нормализованный список в payload
                         payload = {  # Собираем полезные данные для метрик
                             "id": message.get("id"),  # ID сообщения
                             "from_id": message.get("from_id"),  # ID отправителя
@@ -644,6 +667,7 @@ class BotMonitor:
                             "peer_avatar": peer_avatar,  # Аватар чата
                             "text": message.get("text"),  # Текст сообщения
                             "attachments": message.get("attachments", []),  # Список вложений
+                            "copy_history": copy_history,  # Репосты с вложениями
                             "reply_message": reply_message,  # Ответ, если есть
                         }  # Конец сборки payload
                         self.state.mark_event(payload, "message")  # Фиксируем событие в состоянии
@@ -903,12 +927,13 @@ def build_dashboard_app(
     def assemble_stats(range_minutes: Optional[int] = None) -> Dict[str, object]:
         selected_range = range_minutes if isinstance(range_minutes, int) and range_minutes > 0 else DEFAULT_TIMELINE_MINUTES  # Нормализуем выбранный диапазон
         messages_count = event_logger.count_messages(selected_range)  # Считаем сообщения за выбранный диапазон
+        last_messages = [decorate_message_preview(msg) for msg in state.last_messages]  # Нормализуем вложения последних сообщений
         return {  # Собираем словарь статистики
             "events": messages_count,  # Количество событий за диапазон берем из количества сообщений
             "messages": messages_count,  # Количество сообщений за диапазон
             "invites": state.invites,  # Количество приглашений/удалений за текущую сессию
             "errors": state.errors,  # Количество ошибок лонгпулла за текущую сессию
-            "last_messages": state.last_messages,  # История последних сообщений из оперативной памяти
+            "last_messages": last_messages,  # История последних сообщений из оперативной памяти с кликабельными вложениями
             "timeline": event_logger.fetch_timeline(selected_range),  # Точки графика из базы по диапазону
             "range_minutes": selected_range,  # Возвращаем выбранный диапазон минут
         }
@@ -922,6 +947,61 @@ def build_dashboard_app(
             return parsed.astimezone().isoformat() if parsed else None  # Конвертируем в локальное время и возвращаем ISO
         except Exception:  # Обрабатываем неверный формат строки
             return None  # Возвращаем None при ошибке
+
+    def build_public_attachment_url(local_path: Optional[str]) -> Optional[str]:  # Строит публичную ссылку на локальный файл вложения
+        try:  # Пытаемся собрать публичную ссылку на вложение
+            if not local_path:  # Проверяем, передан ли путь
+                return None  # Возвращаем пустое значение, если пути нет
+            path_obj = Path(local_path).resolve()  # Нормализуем путь до файла
+            if not str(path_obj).startswith(str(ATTACHMENTS_ROOT)):  # Проверяем, что файл лежит внутри корневой папки вложений
+                return None  # Не отдаём файлы вне разрешенной директории
+            relative = path_obj.relative_to(ATTACHMENTS_ROOT)  # Получаем относительный путь внутри папки вложений
+            return f"/attachments/{relative.as_posix()}"  # Формируем URL для раздачи через Flask
+        except Exception:  # Ловим любые ошибки работы с путями
+            return None  # Возвращаем пустое значение при проблеме
+
+    def enrich_attachments_list(attachments: object) -> List[Dict]:  # Добавляет публичные ссылки и нормализует вложения
+        enriched: List[Dict] = []  # Готовим список нормализованных вложений
+        if not isinstance(attachments, list):  # Проверяем, что входной объект — список
+            return enriched  # Возвращаем пустой список при некорректном формате
+        for raw in attachments:  # Перебираем все вложения
+            if not isinstance(raw, dict):  # Проверяем тип элемента
+                continue  # Пропускаем элементы неправильного формата
+            item = dict(raw)  # Делаем копию вложения
+            local_path = item.get("local_path")  # Читаем локальный путь
+            public_url = build_public_attachment_url(local_path)  # Пробуем собрать публичную ссылку
+            if public_url:  # Если ссылка собралась
+                item["public_url"] = public_url  # Добавляем публичную ссылку для фронтенда
+            else:  # Если публичная ссылка не собралась
+                item["public_url"] = item.get("download_url") or item.get("url")  # Оставляем исходную ссылку как fallback
+            enriched.append(item)  # Добавляем нормализованное вложение в список
+        return enriched  # Возвращаем итоговый список
+
+    def serialize_copy_history(entries: object) -> List[Dict]:  # Рекурсивно нормализует репосты и их вложения
+        prepared: List[Dict] = []  # Готовим список репостов
+        if not isinstance(entries, list):  # Проверяем формат входных данных
+            return prepared  # Возвращаем пустой список при ошибке
+        for entry in entries:  # Перебираем репосты
+            if not isinstance(entry, dict):  # Проверяем тип элемента
+                continue  # Пропускаем некорректные записи
+            serialized = dict(entry)  # Копируем словарь репоста
+            serialized["attachments"] = enrich_attachments_list(entry.get("attachments", []))  # Нормализуем вложения репоста
+            serialized["copy_history"] = serialize_copy_history(entry.get("copy_history")) if entry.get("copy_history") else []  # Рекурсивно обрабатываем вложенные репосты
+            prepared.append(serialized)  # Добавляем репост в итоговый список
+        return prepared  # Возвращаем сериализованные репосты
+
+    def decorate_message_preview(message: Dict) -> Dict:  # Добавляет публичные ссылки во вложения последних сообщений
+        if not isinstance(message, dict):  # Проверяем формат сообщения
+            return {}  # Возвращаем пустой словарь при ошибке
+        prepared = dict(message)  # Копируем сообщение, чтобы не менять оригинал
+        prepared["attachments"] = enrich_attachments_list(message.get("attachments", []))  # Нормализуем вложения сообщения
+        prepared["copy_history"] = serialize_copy_history(message.get("copy_history")) if message.get("copy_history") else []  # Нормализуем репосты
+        reply_block = message.get("reply") or message.get("reply_message")  # Получаем блок ответа
+        if isinstance(reply_block, dict):  # Проверяем наличие ответа
+            reply_copy = dict(reply_block)  # Копируем блок
+            reply_copy["attachments"] = enrich_attachments_list(reply_block.get("attachments", []))  # Нормализуем вложения ответа
+            prepared["reply"] = reply_copy  # Подменяем блок ответа нормализованной копией
+        return prepared  # Возвращаем подготовленное сообщение
 
     def serialize_service_event(row: Dict) -> Dict[str, object]:
         return {
@@ -939,7 +1019,7 @@ def build_dashboard_app(
         reply = {  # Готовим словарь ответа
             "id": row.get("reply_message_id"),  # ID исходного сообщения
             "text": row.get("reply_message_text"),  # Текст исходного сообщения
-            "attachments": json.loads(row.get("reply_message_attachments") or "[]"),  # Вложения исходного сообщения
+            "attachments": enrich_attachments_list(json.loads(row.get("reply_message_attachments") or "[]")),  # Вложения исходного сообщения с публичными ссылками
             "from_id": row.get("reply_message_from_id"),  # Автор исходного сообщения
             "from_name": row.get("reply_message_from_name"),  # Имя автора исходного сообщения
             "from_avatar": row.get("reply_message_from_avatar"),  # Аватар автора исходного сообщения
@@ -947,10 +1027,13 @@ def build_dashboard_app(
         if isinstance(reply_payload, dict) and not (reply["id"] or reply["text"] or reply["from_id"]):  # Проверяем, нужно ли дополнить данными из payload
             reply["id"] = reply_payload.get("id")  # Подставляем ID исходного сообщения из payload
             reply["text"] = reply_payload.get("text")  # Подставляем текст исходного сообщения
-            reply["attachments"] = reply_payload.get("attachments", []) if isinstance(reply_payload.get("attachments"), list) else []  # Подставляем вложения исходного сообщения
+            reply["attachments"] = enrich_attachments_list(reply_payload.get("attachments", []) if isinstance(reply_payload.get("attachments"), list) else [])  # Подставляем вложения исходного сообщения
             reply["from_id"] = reply_payload.get("from_id")  # Подставляем автора исходного сообщения
             reply["from_name"] = reply_payload.get("from_name")  # Подставляем имя автора исходного сообщения
             reply["from_avatar"] = reply_payload.get("from_avatar")  # Подставляем аватар автора исходного сообщения
+        attachments = enrich_attachments_list(json.loads(row.get("attachments") or "[]"))  # Подготавливаем вложения с публичными ссылками
+
+        copy_history = serialize_copy_history(raw_payload.get("copy_history")) if isinstance(raw_payload, dict) else []  # Сериализуем репосты и вложения
         return {  # Формируем итоговый словарь лога
             "id": row.get("id"),  # ID записи
             "created_at": localize_iso(row.get("created_at")),  # Локальное время создания в ISO-формате
@@ -965,7 +1048,8 @@ def build_dashboard_app(
             "reply": reply,  # Структурированный блок ответа
             "is_bot": row.get("is_bot", 0),  # Флаг, что автор — бот или сообщество
             "text": row.get("text"),  # Текст
-            "attachments": json.loads(row.get("attachments") or "[]"),  # Вложения
+            "attachments": attachments,  # Вложения с публичными ссылками
+            "copy_history": copy_history,  # Репосты с вложениями
             "payload": raw_payload,  # Сырой payload
         }  # Конец словаря лога
 
@@ -1011,6 +1095,18 @@ def build_dashboard_app(
         messages = [serialize_log(row) for row in event_logger.fetch_messages(peer_id=peer_id, limit=limit)]  # Запрашиваем логи
         log_service_event(200, f"Отдаём JSON с логами peer_id={peer_id} и лимитом {limit}")  # Логируем успешную отдачу логов
         return jsonify({"items": messages, "peer_id": peer_id})  # Возвращаем JSON с логами
+
+    @app.route("/attachments/<path:subpath>")
+    def serve_attachment(subpath: str):  # Отдаем сохраненное вложение из папки
+        target_path = (ATTACHMENTS_ROOT / subpath).resolve()  # Строим полный путь до файла
+        if not str(target_path).startswith(str(ATTACHMENTS_ROOT)):  # Проверяем, что путь внутри директории вложений
+            log_service_event(403, "Запрос вложения вне разрешенной директории отклонен")  # Пишем предупреждение в сервисные логи
+            return "Недоступно", 403  # Возвращаем ошибку доступа
+        if not target_path.exists():  # Проверяем наличие файла
+            log_service_event(404, f"Файл вложения не найден: {subpath}")  # Фиксируем отсутствие файла
+            return "Файл не найден", 404  # Отдаем 404
+        relative = target_path.relative_to(ATTACHMENTS_ROOT)  # Получаем относительный путь
+        return send_from_directory(ATTACHMENTS_ROOT, relative.as_posix())  # Отдаем файл через Flask
 
     @app.route("/api/logs/clear", methods=["POST"])
     def clear_logs():
