@@ -301,14 +301,11 @@ def build_dashboard_app(
     def index():
         return render_template(
             "index.html",  # Шаблон дашборда
-            initial_group=json.dumps(group_info, ensure_ascii=False),  # Начальные данные о сообществе
-            initial_conversations=json.dumps(
-                [conv.get("conversation", {}) for conv in conversations],  # Достаём тела диалогов
-                ensure_ascii=False,  # Сохраняем кириллицу
-            ),
-            initial_stats=json.dumps(assemble_stats(), ensure_ascii=False),  # Начальные метрики
-            initial_peers=json.dumps(event_logger.list_peers(), ensure_ascii=False),  # Доступные peer_id
-            initial_storage=json.dumps(assemble_storage(), ensure_ascii=False),  # Описание файла базы для подсказки
+            initial_group=group_info,  # Передаем словарь с данными сообщества без лишней сериализации
+            initial_conversations=[conv.get("conversation", {}) for conv in conversations],  # Список тел диалогов
+            initial_stats=assemble_stats(),  # Начальные метрики состояния без двойного JSON
+            initial_peers=event_logger.list_peers(),  # Доступные peer_id из базы
+            initial_storage=assemble_storage(),  # Описание файла базы для подсказки
             demo_mode=demo_mode,  # Флаг демо для вывода на страницу
         )  # Возвращаем HTML страницу
 
