@@ -200,6 +200,17 @@ class EventLogger:
             cursor.execute("DELETE FROM events")  # Удаляем все строки таблицы событий
             self._connection.commit()  # Фиксируем изменения после удаления
 
+    def delete_message(self, record_id: int) -> bool:
+        with self._lock:  # Начинаем потокобезопасную операцию
+            cursor = self._connection.cursor()  # Получаем курсор
+            cursor.execute(  # Выполняем удаление только для событий типа message по ID записи
+                "DELETE FROM events WHERE id = ? AND event_type = ?",
+                (int(record_id), "message"),
+            )
+            deleted = cursor.rowcount > 0  # Фиксируем, была ли удалена хотя бы одна строка
+            self._connection.commit()  # Фиксируем изменения после удаления
+        return deleted  # Возвращаем результат удаления
+
     def fetch_messages(self, peer_id: Optional[int] = None, limit: int = 50) -> List[Dict]:
         with self._lock:  # Начинаем безопасное чтение
             cursor = self._connection.cursor()  # Берем курсор
@@ -636,6 +647,15 @@ def build_dashboard_app(
         event_logger.clear_messages()  # Очищаем все записи событий в таблице
         log_service_event(201, "Логи сообщений очищены через API")  # Фиксируем факт очистки в сервисных событиях
         return jsonify({"status": "cleared"})  # Возвращаем подтверждение клиенту
+
+    @app.route("/api/logs/<int:log_id>", methods=["DELETE"])
+    def delete_log(log_id: int):
+        deleted = event_logger.delete_message(log_id)  # Пытаемся удалить строку по ID
+        if not deleted:  # Проверяем, была ли найдена запись
+            log_service_event(404, f"Запись лога сообщений id={log_id} не найдена для удаления")  # Логируем отсутствие строки
+            return jsonify({"status": "not_found", "id": log_id}), 404  # Возвращаем 404, если строка не найдена
+        log_service_event(200, f"Запись лога сообщений id={log_id} удалена через API")  # Фиксируем успешное удаление
+        return jsonify({"status": "deleted", "id": log_id})  # Отдаем подтверждение успешного удаления
 
     @app.route("/api/service-logs")
     def service_logs():

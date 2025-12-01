@@ -95,12 +95,14 @@
                 <th>Ответ на</th> <!-- Колонка ответа -->
                 <th>Вложения</th> <!-- Колонка вложений -->
                 <th>Текст</th> <!-- Колонка текста -->
-                <th>ID</th> <!-- Колонка ID -->
+                <th>ID VK</th> <!-- Колонка ID сообщения во VK -->
+                <th>Запись</th> <!-- Колонка ID в базе -->
+                <th>Действия</th> <!-- Колонка действий -->
               </tr> <!-- Конец строки заголовков -->
             </thead> <!-- Конец шапки -->
             <tbody id="logs-body"> <!-- Тело таблицы -->
               <tr> <!-- Плейсхолдер -->
-                <td colspan="8" class="text-secondary">Нет данных</td> <!-- Текст плейсхолдера -->
+                <td colspan="10" class="text-secondary">Нет данных</td> <!-- Текст плейсхолдера -->
               </tr> <!-- Конец плейсхолдера -->
             </tbody> <!-- Конец тела таблицы -->
           </table> <!-- Конец таблицы -->
@@ -256,7 +258,7 @@
     function renderLogs(logs) { // Функция отрисовки таблицы логов
       logsBody.innerHTML = ''; // Очищаем тело
       if (!logs.length) { // Если массив пустой
-        logsBody.innerHTML = '<tr><td colspan="8" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
+        logsBody.innerHTML = '<tr><td colspan="10" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
         return; // Завершаем функцию
       } // Конец проверки пустоты
       logs.forEach((log) => { // Перебираем логи
@@ -266,10 +268,26 @@
         const peerLabel = log.peer_title ? `${log.peer_title} (ID: ${log.peer_id ?? '—'})` : `${log.peer_id ?? '—'}`; // Подпись чата
         const authorLabel = log.from_name ? `${log.from_name} (ID: ${log.from_id ?? '—'})` : `${log.from_id ?? '—'}`; // Подпись автора
         const createdAt = formatDateTime(log.created_at); // Преобразуем время в локальный формат
-        row.innerHTML = `<td>${createdAt}</td><td>${peerLabel}</td><td>${authorLabel}</td><td>${botBadge}</td><td>${log.reply_to ?? '—'}</td><td>${attachments}</td><td>${log.text ?? ''}</td><td>${log.message_id ?? '—'}</td>`; // Заполняем ячейки
+        row.innerHTML = `<td>${createdAt}</td><td>${peerLabel}</td><td>${authorLabel}</td><td>${botBadge}</td><td>${log.reply_to ?? '—'}</td><td>${attachments}</td><td>${log.text ?? ''}</td><td>${log.message_id ?? '—'}</td><td>${log.id ?? '—'}</td><td><button type="button" class="btn btn-sm btn-outline-danger delete-log-btn" data-log-id="${log.id}">Удалить</button></td>`; // Заполняем ячейки и кнопку удаления
         logsBody.appendChild(row); // Добавляем строку в таблицу
       }); // Конец цикла
     } // Конец функции отрисовки
+
+    async function deleteLog(recordId) { // Функция удаления одной записи
+      const confirmed = window.confirm('Удалить выбранную строку лога сообщений? Действие необратимо.'); // Подтверждаем действие
+      if (!confirmed) { // Если пользователь отказался
+        return; // Прерываем удаление
+      } // Конец проверки согласия
+      try { // Пытаемся выполнить запрос
+        const response = await fetch(`/api/logs/${recordId}`, { method: 'DELETE' }); // Отправляем запрос удаления
+        if (!response.ok) { // Проверяем код ответа
+          throw new Error('Удаление завершилось ошибкой'); // Бросаем исключение при проблеме
+        } // Конец проверки кода ответа
+        await refreshLogs(); // Перерисовываем таблицу после удаления
+      } catch (err) { // Обработка ошибки
+        console.error('Не удалось удалить запись лога', err); // Логируем проблему
+      } // Конец обработки
+    } // Конец функции удаления записи
 
     function renderServiceLogs(logs) { // Функция отрисовки сервисных оповещений
       serviceBody.innerHTML = ''; // Очищаем тело таблицы
@@ -370,6 +388,18 @@
       event.preventDefault(); // Отменяем стандартное поведение
       refreshLogs(); // Перезапрашиваем логи
     }); // Конец обработчика формы
+
+    logsBody.addEventListener('click', (event) => { // Делегированный обработчик кликов по таблице логов
+      const deleteButton = event.target.closest('.delete-log-btn'); // Ищем кнопку удаления
+      if (!deleteButton) { // Если клик не по кнопке удаления
+        return; // Прерываем обработку
+      } // Конец проверки назначения клика
+      const recordId = deleteButton.dataset.logId; // Берем ID записи из data-атрибута
+      if (!recordId) { // Если ID не найден
+        return; // Завершаем без вызова API
+      } // Конец проверки наличия ID
+      deleteLog(recordId); // Запускаем удаление выбранной строки
+    }); // Конец делегированного обработчика
 
     refreshBtn.addEventListener('click', () => { // Обработчик кнопки обновления
       refreshLogs(); // Перезапрашиваем логи
