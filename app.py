@@ -135,10 +135,19 @@ def build_dashboard_app(state: BotState, group_info: Dict, conversations: List[D
 
 def main() -> None:
     settings = load_settings()  # Читаем настройки из окружения
+    logger.info("Используем ID сообщества: %s", settings["group_id"])  # Проверяем, что данные из .env подхватились
     state = BotState()  # Создаем объект состояния для статистики
     session = vk_api.VkApi(token=settings["token"])  # Сессия VK API для запросов
-    group_info = fetch_group_profile(session, settings["group_id"])  # Получаем данные о сообществе
-    conversations = fetch_recent_conversations(session)  # Берем список доступных диалогов
+    try:  # Пытаемся выполнить вызов VK API
+        group_info = fetch_group_profile(session, settings["group_id"])  # Получаем данные о сообществе
+    except Exception as exc:  # Перехватываем любую ошибку от VK
+        logger.exception("Не удалось загрузить информацию о сообществе: %s", exc)  # Пишем подробный лог
+        group_info = {}  # Возвращаем пустой словарь, чтобы сервер все равно стартовал
+    try:  # Пробуем прочитать список диалогов
+        conversations = fetch_recent_conversations(session)  # Берем список доступных диалогов
+    except Exception as exc:  # Если VK API вернул ошибку
+        logger.exception("Не удалось получить список диалогов: %s", exc)  # Фиксируем проблему
+        conversations = []  # Подставляем пустой список для продолжения работы сервера
     monitor = BotMonitor(settings["token"], settings["group_id"], state)  # Создаем монитора
     monitor.start()  # Запускаем лонгпулл в фоне
     app = build_dashboard_app(state, group_info, conversations)  # Конфигурируем дашборд
@@ -148,4 +157,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":  # Точка входа при запуске файла
-    main()  # Запускаем основную функцию
+    try:  # Окружаем запуск обработкой ошибок
+        main()  # Запускаем основную функцию
+    except Exception as exc:  # Если что-то пошло не так
+        logger.exception("Приложение завершилось с ошибкой: %s", exc)  # Показываем стек ошибки в логе
+        input("Нажмите Enter, чтобы закрыть окно...")  # Держим окно открытым при двойном клике на Windows
