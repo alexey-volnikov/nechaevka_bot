@@ -200,10 +200,10 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script> <!-- Подключаем Chart.js -->
   <script> // Начало скрипта
-    const initialStats = JSON.parse('{{ initial_stats|safe }}'); // Читаем стартовые метрики из шаблона
-    const initialGroup = JSON.parse('{{ initial_group|safe }}'); // Читаем информацию о сообществе
-    const initialConversations = JSON.parse('{{ initial_conversations|safe }}'); // Читаем список диалогов
-    const initialPeers = JSON.parse('{{ initial_peers|safe }}'); // Читаем стартовый список peer_id
+    const initialStats = {{ initial_stats|tojson }}; // Читаем стартовые метрики из шаблона без ручного парсинга, чтобы не было ошибок на кавычках
+    const initialGroup = {{ initial_group|tojson }}; // Читаем информацию о сообществе в безопасном виде
+    const initialConversations = {{ initial_conversations|tojson }}; // Читаем список диалогов без риска испортить JSON
+    const initialPeers = {{ initial_peers|tojson }}; // Читаем стартовый список peer_id без ошибок экранирования
     const demoMode = {{ 'true' if demo_mode else 'false' }}; // Флаг демо-режима
 
     const eventsEl = document.getElementById('events-count'); // Находим элемент событий
