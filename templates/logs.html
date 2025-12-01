@@ -46,6 +46,8 @@
     .gallery-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; } /* Панель кнопок */
     .gallery-meta { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: #cbd5e1; } /* Текст описания */
     .gallery-nav-btn { min-width: 42px; } /* Минимальная ширина кнопок навигации */
+    .gallery-thumb { margin: 2px; } /* Отступы кнопок миниатюр */
+    .gallery-thumb.active { border-width: 2px !important; } /* Подсветка активного элемента */
   </style> <!-- Конец стилей -->
 </head> <!-- Конец шапки -->
 <body class="pb-5"> <!-- Тело страницы -->
@@ -203,6 +205,9 @@
         <div class="fw-semibold">Просмотр вложений</div> <!-- Заголовок модалки -->
         <button type="button" class="btn btn-outline-light btn-sm" id="gallery-close">Закрыть</button> <!-- Кнопка закрытия -->
       </div> <!-- Конец шапки -->
+      <div id="gallery-strip" class="attachment-group flex-wrap"> <!-- Полоса миниатюр вложений -->
+        <span class="text-secondary small">Здесь появятся все вложения сообщения</span> <!-- Плейсхолдер полосы -->
+      </div> <!-- Конец полосы миниатюр -->
       <div class="gallery-media" id="gallery-media"> <!-- Блок медиа -->
         <div class="text-secondary">Нет выбранного вложения</div> <!-- Плейсхолдер -->
       </div> <!-- Конец блока медиа -->
@@ -245,6 +250,7 @@
     const serviceTabBtn = document.getElementById('service-tab-btn'); // Кнопка вкладки сервисных логов
     const galleryModal = document.getElementById('gallery-modal'); // Фон модалки галереи
     const galleryMedia = document.getElementById('gallery-media'); // Блок медиа в модалке
+    const galleryStrip = document.getElementById('gallery-strip'); // Полоса миниатюр для вложений
     const galleryCaption = document.getElementById('gallery-caption'); // Подпись файла
     const galleryOrigin = document.getElementById('gallery-origin'); // Источник файла
     const galleryLinks = document.getElementById('gallery-links'); // Блок ссылок
@@ -255,6 +261,20 @@
     let currentGalleryKey = null; // Текущий ключ активной галереи
     let currentGalleryIndex = 0; // Текущий индекс в активной галерее
     let galleryCounter = 0; // Счетчик для генерации ключей
+
+    function resetGalleryStorePreserveActive() { // Очищаем хранилище, но сохраняем открытую галерею
+      const modalOpen = galleryModal.style.display === 'flex'; // Проверяем, открыта ли модалка
+      const preservedKey = modalOpen ? currentGalleryKey : null; // Сохраняем активный ключ
+      const preservedValue = preservedKey ? galleryStore[preservedKey] : null; // Запоминаем активную галерею
+      Object.keys(galleryStore).forEach((key) => { // Перебираем ключи хранилища
+        if (!preservedKey || key !== preservedKey) { // Если ключ не активен
+          delete galleryStore[key]; // Удаляем запись
+        } // Конец проверки
+      }); // Конец очистки
+      if (preservedKey && preservedValue) { // Если есть активная галерея
+        galleryStore[preservedKey] = preservedValue; // Возвращаем её обратно
+      } // Конец восстановления
+    } // Конец функции сохранения активной галереи при очистке
     let serviceOffset = 0; // Текущее смещение
     let serviceTotal = 0; // Общее количество сервисных событий
 
@@ -414,6 +434,19 @@
       return `<div class="content-cell">${attachmentsBlock}${copyBlock}</div>`; // Возвращаем объединенную ячейку
     } // Конец функции
 
+    function renderGalleryStrip(galleryData) { // Отрисовываем полосу миниатюр
+      if (!galleryData || !Array.isArray(galleryData.items) || galleryData.items.length === 0) { // Проверяем входные данные
+        galleryStrip.innerHTML = '<span class="text-secondary small">Вложений нет</span>'; // Показываем плейсхолдер
+        return; // Выходим при отсутствии данных
+      } // Конец проверки
+      const buttons = galleryData.items.map((item, idx) => { // Формируем кнопки для всех вложений
+        const typeLabel = attachmentTypeLabels[item.type] || 'Файл'; // Определяем подпись типа
+        const activeClass = idx === currentGalleryIndex ? 'active' : ''; // Определяем активную кнопку
+        return `<button type="button" class="btn btn-outline-light btn-sm gallery-thumb ${activeClass}" data-gallery-index="${idx}">${idx + 1}. ${typeLabel}</button>`; // Возвращаем HTML кнопки
+      }); // Конец сборки кнопок
+      galleryStrip.innerHTML = buttons.join(''); // Рисуем полосу миниатюр
+    } // Конец функции полосы миниатюр
+
     function renderGallerySlide(galleryData, index) { // Рисуем текущий слайд галереи
       if (!galleryData || !Array.isArray(galleryData.items) || !galleryData.items.length) { // Проверяем наличие данных
         galleryMedia.innerHTML = '<div class="text-secondary">Вложений нет</div>'; // Показываем плейсхолдер
@@ -434,6 +467,7 @@
       galleryOrigin.textContent = `${origin} • ${galleryData.meta.peer}`; // Обновляем источник
       const openLink = `<a href="${item.url}" target="_blank" rel="noopener noreferrer">Открыть файл</a>`; // Ссылка на файл
       galleryLinks.innerHTML = `${openLink} · ${galleryData.meta.author}`; // Добавляем ссылку и автора
+      renderGalleryStrip(galleryData); // Обновляем полосу миниатюр
     } // Конец функции рендера галереи
 
     function openGallery(key, targetUrl, targetOrigin) { // Открываем модалку галереи
@@ -475,6 +509,18 @@
     galleryClose.addEventListener('click', () => closeGallery()); // Обработчик кнопки закрытия
     galleryPrev.addEventListener('click', () => stepGallery(-1)); // Обработчик кнопки назад
     galleryNext.addEventListener('click', () => stepGallery(1)); // Обработчик кнопки вперед
+    galleryStrip.addEventListener('click', (evt) => { // Обработчик клика по миниатюрам
+      const trigger = evt.target.closest('[data-gallery-index]'); // Ищем кнопку с индексом
+      if (!trigger || currentGalleryKey === null) { // Проверяем, есть ли активная галерея
+        return; // Выходим при отсутствии
+      } // Конец проверки
+      const targetIndex = Number(trigger.getAttribute('data-gallery-index')); // Читаем индекс
+      const galleryData = galleryStore[currentGalleryKey]; // Берем активную галерею
+      if (!galleryData || Number.isNaN(targetIndex)) { // Проверяем данные
+        return; // Выходим при ошибке
+      } // Конец проверки
+      renderGallerySlide(galleryData, targetIndex); // Показываем выбранное вложение
+    }); // Конец обработчика клика по миниатюрам
     galleryModal.addEventListener('click', (evt) => { // Закрываем по клику на фон
       if (evt.target === galleryModal) { // Проверяем цель клика
         closeGallery(); // Закрываем модалку
@@ -543,7 +589,7 @@
 
     function renderLogs(logs) { // Функция отрисовки таблицы логов
       logsBody.innerHTML = ''; // Очищаем тело
-      Object.keys(galleryStore).forEach((key) => delete galleryStore[key]); // Сбрасываем хранилище галерей
+      resetGalleryStorePreserveActive(); // Очищаем хранилище, сохраняя открытую галерею
       galleryCounter = 0; // Обнуляем счетчик ключей
       if (!logs.length) { // Если массив пустой
         logsBody.innerHTML = '<tr><td colspan="10" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
