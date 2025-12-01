@@ -203,14 +203,15 @@
             <table class="table table-striped align-middle mb-0"> <!-- Таблица диалогов -->
               <thead class="text-secondary"> <!-- Заголовок -->
                 <tr>
-                  <th>peer_id</th> <!-- Заголовок -->
-                  <th>Тип</th> <!-- Заголовок -->
-                  <th>Название</th> <!-- Заголовок -->
+                  <th>peer_id</th> <!-- Заголовок идентификатора чата -->
+                  <th>Тип</th> <!-- Заголовок типа диалога -->
+                  <th>Название</th> <!-- Заголовок названия чата -->
+                  <th>Сообщений</th> <!-- Заголовок количества сообщений -->
                 </tr>
               </thead>
               <tbody id="conversations-body"> <!-- Тело -->
                 <tr>
-                  <td colspan="3" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
+                  <td colspan="4" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
                 </tr>
               </tbody>
             </table> <!-- Конец таблицы -->
@@ -350,15 +351,28 @@
     function renderConversations(convs) { // Функция отрисовки диалогов
       conversationsBody.innerHTML = ''; // Очищаем таблицу
       if (!convs.length) { // Если нет данных
-        conversationsBody.innerHTML = '<tr><td colspan="3" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
+        conversationsBody.innerHTML = '<tr><td colspan="4" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
         return; // Выходим
       } // Конец проверки
-      convs.forEach((conv) => { // Перебираем диалоги
+      const translatedTypes = { chat: 'беседа', user: 'диалог', group: 'сообщество', unknown: 'неизвестно' }; // Словарь переводов типов
+      const sortedConvs = [...convs].sort((a, b) => { // Копируем и сортируем диалоги
+        const aHasTitle = Boolean(a?.chat_settings?.title); // Есть ли название у первого диалога
+        const bHasTitle = Boolean(b?.chat_settings?.title); // Есть ли название у второго диалога
+        if (aHasTitle !== bHasTitle) { // Если различается наличие названия
+          return aHasTitle ? -1 : 1; // Сначала диалоги с названием
+        } // Конец проверки наличия названия
+        const aCount = Number(a?.messages_count ?? 0); // Количество сообщений для первого диалога
+        const bCount = Number(b?.messages_count ?? 0); // Количество сообщений для второго диалога
+        return bCount - aCount; // Сортируем по убыванию количества сообщений
+      }); // Конец сортировки
+      sortedConvs.forEach((conv) => { // Перебираем отсортированные диалоги
         const peer = conv.peer || {}; // Получаем peer
-        const title = conv.chat_settings?.title || ''; // Получаем название чата
+        const title = conv.chat_settings?.title || '—'; // Получаем название чата
         const type = peer.type || 'unknown'; // Получаем тип
+        const localizedType = translatedTypes[type] || translatedTypes.unknown; // Переводим тип на русский
+        const messagesCount = Number(conv.messages_count ?? 0); // Нормализуем количество сообщений
         const row = document.createElement('tr'); // Создаем строку
-        row.innerHTML = `<td>${peer.id ?? '—'}</td><td>${type}</td><td>${title}</td>`; // Заполняем строку
+        row.innerHTML = `<td>${peer.id ?? '—'}</td><td>${localizedType}</td><td>${title}</td><td>${messagesCount}</td>`; // Заполняем строку
         conversationsBody.appendChild(row); // Добавляем строку
       }); // Конец цикла
     } // Конец функции

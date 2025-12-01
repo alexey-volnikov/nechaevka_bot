@@ -220,6 +220,16 @@ class EventLogger:
             if row["peer_id"] is not None  # Фильтруем пустые значения
         ]
 
+    def count_messages_by_peer(self) -> Dict[int, int]:
+        with self._lock:  # Начинаем потокобезопасное чтение
+            cursor = self._connection.cursor()  # Берем курсор для запроса
+            cursor.execute(  # Выполняем агрегатный запрос по количеству сообщений
+                "SELECT peer_id, COUNT(*) AS cnt FROM events WHERE event_type = ? AND peer_id IS NOT NULL GROUP BY peer_id",
+                ("message",),
+            )
+            rows = cursor.fetchall()  # Читаем результаты
+        return {int(row["peer_id"]): int(row["cnt"]) for row in rows if row["peer_id"] is not None}  # Возвращаем словарь peer_id->количество
+
 
 class ServiceEventLogger:  # Логгер сервисных событий с отдельной таблицей
     """Хранит сервисные оповещения с типом и пояснением."""
@@ -519,7 +529,13 @@ def build_dashboard_app(
 
     def assemble_conversations() -> List[Dict]:
         peers_from_logs = event_logger.list_peers()  # Получаем чаты из базы
-        return merge_conversations(conversations, peers_from_logs)  # Объединяем стартовые диалоги с теми, что накопились в логах
+        messages_counts = event_logger.count_messages_by_peer()  # Получаем количество сообщений по каждому peer_id
+        merged = merge_conversations(conversations, peers_from_logs)  # Объединяем стартовые диалоги с теми, что накопились в логах
+        for conv in merged:  # Перебираем объединенные диалоги
+            peer = conv.get("peer", {}) if isinstance(conv, dict) else {}  # Достаем блок peer из диалога
+            peer_id = peer.get("id")  # Определяем peer_id текущего диалога
+            conv["messages_count"] = messages_counts.get(peer_id, 0)  # Добавляем поле с количеством сообщений
+        return merged  # Возвращаем список диалогов с подсчитанными сообщениями
 
     def assemble_stats() -> Dict[str, object]:
         return {
