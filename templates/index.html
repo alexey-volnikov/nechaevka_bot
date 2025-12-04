@@ -199,7 +199,7 @@
           <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок -->
             <div> <!-- Левая часть заголовка -->
               <div class="card-title mb-1" data-bs-toggle="tooltip" title="Свежие сообщения с сортировкой сверху вниз">Последние сообщения</div> <!-- Название с подсказкой -->
-              <div class="text-secondary small">Новые сверху, таблица растягивается на всю ширину контейнера</div> <!-- Подпись с уточнением ширины -->
+              <div class="text-secondary small">Новые сверху, без технических ID — только понятные подписи</div> <!-- Подпись с уточнением ширины -->
             </div> <!-- Конец левой части заголовка -->
             <div class="d-flex align-items-center gap-2"> <!-- Контейнер кнопок -->
               <span class="badge-soft badge rounded-pill" id="timezone-badge" title="">Локальное время</span> <!-- Бейдж с подсказкой о часовом поясе -->
@@ -214,8 +214,7 @@
               <thead class="text-secondary"> <!-- Заголовок таблицы -->
                 <tr> <!-- Строка заголовка -->
                   <th>Чат</th> <!-- Заголовок столбца -->
-                  <th>Отправитель</th> <!-- Заголовок столбца -->
-                  <th>Бот?</th> <!-- Заголовок столбца для отметки бота -->
+                  <th>Отправитель</th> <!-- Заголовок столбца с человеком или ботом -->
                   <th>Ответ</th> <!-- Заголовок столбца -->
                   <th>Вложения</th> <!-- Заголовок столбца -->
                   <th>Текст</th> <!-- Заголовок столбца -->
@@ -223,7 +222,7 @@
               </thead> <!-- Конец заголовка таблицы -->
               <tbody id="messages-body"> <!-- Тело таблицы -->
                 <tr> <!-- Строка-заглушка -->
-                  <td colspan="6" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
+                  <td colspan="5" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
                 </tr> <!-- Конец строки-заглушки -->
               </tbody> <!-- Конец тела таблицы -->
             </table> <!-- Конец таблицы -->
@@ -374,18 +373,16 @@
       return safeLabel; // Если аватар отсутствует, возвращаем только текст
     } // Конец функции построения подписи
 
-    function buildReplyPreview(reply, peerId) { // Функция сборки ячейки ответа
+    function buildReplyPreview(reply) { // Функция сборки ячейки ответа без технических ID
       if (!reply || (!reply.id && !reply.text && !reply.from_id)) { // Проверяем наличие полезных данных
         return '<span class="text-secondary">—</span>'; // Возвращаем плейсхолдер при отсутствии ответа
       } // Конец проверки наличия ответа
-      const replyId = reply.id ?? '—'; // Определяем ID исходного сообщения
-      const replyText = reply.text ? reply.text.slice(0, 120) : 'Без текста'; // Готовим превью текста
-      const replyAuthorLabel = reply.from_name ? `${reply.from_name} (ID: ${reply.from_id ?? '—'})` : reply.from_id ? `ID: ${reply.from_id}` : 'Автор неизвестен'; // Формируем подпись автора ответа
-      const replyAuthorCell = buildAvatarLabel(replyAuthorLabel, reply.from_avatar); // Готовим подпись автора с аватаркой
-      const replyLink = reply.id && peerId ? `<a href="https://vk.com/im?sel=${peerId}&msgid=${reply.id}" target="_blank" rel="noopener noreferrer">#${reply.id}</a>` : `#${replyId}`; // Собираем ссылку на исходное сообщение
+      const replyText = reply.text ? reply.text.slice(0, 120) : 'Без текста'; // Готовим превью текста ответа
+      const replyAuthorName = reply.from_name || 'Автор неизвестен'; // Определяем человека, если есть имя
+      const replyAuthorCell = buildAvatarLabel(replyAuthorName, reply.from_avatar); // Готовим подпись автора с аватаркой без ID
       const replyAttachmentsCount = Array.isArray(reply.attachments) ? reply.attachments.length : 0; // Считаем вложения исходного сообщения
       const replyAttachmentsLabel = replyAttachmentsCount ? `${replyAttachmentsCount} влож.` : 'Без вложений'; // Формируем подпись вложений
-      return `<div class="d-flex flex-column gap-1"><div class="d-flex align-items-center gap-2">${replyLink}<span class="text-secondary small">${replyAttachmentsLabel}</span></div><div class="text-secondary small">${replyText}</div><div class="text-secondary small">${replyAuthorCell}</div></div>`; // Возвращаем HTML ячейки
+      return `<div class="d-flex flex-column gap-1"><div class="text-secondary small">Ответ на: ${replyAuthorCell}</div><div class="text-secondary small">${replyText}</div><div class="text-secondary small">${replyAttachmentsLabel}</div></div>`; // Возвращаем HTML ячейки без ссылок и ID
     } // Конец функции сборки ответа
 
     const attachmentTypeLabels = { photo: 'Фото', video: 'Видео', doc: 'Документ', audio_message: 'Голос', audio: 'Аудио', link: 'Ссылка', sticker: 'Стикер', wall: 'Пост', wall_reply: 'Комментарий', market: 'Товар', gift: 'Подарок', story: 'История', graffiti: 'Граффити', podcast: 'Подкаст', share: 'Репост', file: 'Файл' }; // Человекочитаемые подписи типов вложений
@@ -771,23 +768,30 @@
       resetGalleryStorePreserveActive(); // Сохраняем открытую галерею и очищаем остальное
       galleryCounter = 0; // Обнуляем счетчик ключей
       if (!messages.length) { // Если пусто
-        messagesBody.innerHTML = '<tr><td colspan="6" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
+        messagesBody.innerHTML = '<tr><td colspan="5" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
         return; // Выходим
       } // Конец проверки пустоты
-      messages.forEach((msg) => { // Перебираем сообщения по порядку от новых к старым
+      const sortedMessages = [...messages].sort((a, b) => { // Создаем копию и сортируем, чтобы новые были сверху
+        const timeA = a?.created_at ? new Date(a.created_at).getTime() : 0; // Вычисляем метку времени первого сообщения
+        const timeB = b?.created_at ? new Date(b.created_at).getTime() : 0; // Вычисляем метку времени второго сообщения
+        if (timeA !== timeB) { // Если времена различаются
+          return timeB - timeA; // Сортируем по убыванию времени
+        } // Конец проверки времени
+        return (b?.id ?? 0) - (a?.id ?? 0); // Если времени нет, сортируем по убыванию ID
+      }); // Конец сортировки
+      sortedMessages.forEach((msg) => { // Перебираем сообщения по порядку от новых к старым
         const row = document.createElement('tr'); // Создаем строку
         const galleryKey = `msg-${msg.id ?? 'local'}-${galleryCounter++}`; // Формируем уникальный ключ для галереи
         const normalizedAttachments = extractAttachments(msg); // Нормализуем вложения из сообщения или payload
         const normalizedCopyHistory = extractCopyHistory(msg); // Нормализуем репосты из сообщения или payload
         registerGallery({ ...msg, attachments: normalizedAttachments, copy_history: normalizedCopyHistory }, galleryKey); // Регистрируем вложения для модалки
         const contentCell = buildContentCell(normalizedAttachments, normalizedCopyHistory, galleryKey); // Формируем ячейку контента
-        const botBadge = msg.is_bot ? 'Да' : 'Нет'; // Определяем, является ли автор ботом
-        const peerLabel = msg.peer_title ? `${msg.peer_title} (ID: ${msg.peer_id ?? '—'})` : `${msg.peer_id ?? '—'}`; // Формируем подпись чата
-        const authorLabel = msg.from_name ? `${msg.from_name} (ID: ${msg.from_id ?? '—'})` : `${msg.from_id ?? '—'}`; // Формируем подпись автора
+        const peerLabel = msg.peer_title || 'Чат без названия'; // Формируем подпись чата без ID
+        const authorName = msg.from_name || 'Неизвестный отправитель'; // Формируем подпись автора без технических данных
         const peerCell = buildAvatarLabel(peerLabel, msg.peer_avatar); // Готовим ячейку чата с аватаркой
-        const authorCell = buildAvatarLabel(authorLabel, msg.from_avatar); // Готовим ячейку автора с аватаркой
-        const replyCell = buildReplyPreview(msg.reply, msg.peer_id); // Готовим ячейку превью исходного сообщения
-        row.innerHTML = `<td>${peerCell}</td><td>${authorCell}</td><td>${botBadge}</td><td>${replyCell}</td><td>${contentCell}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки
+        const authorCell = `${buildAvatarLabel(authorName, msg.from_avatar)}${msg.is_bot ? ' <span class="badge bg-info text-dark ms-2">бот</span>' : ''}`; // Готовим ячейку автора с аватаркой и бейджем бота
+        const replyCell = buildReplyPreview(msg.reply); // Готовим ячейку превью исходного сообщения без ссылок
+        row.innerHTML = `<td>${peerCell}</td><td>${authorCell}</td><td>${replyCell}</td><td>${contentCell}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки
         messagesBody.appendChild(row); // Добавляем строку в таблицу
       }); // Конец цикла
     } // Конец функции
