@@ -811,6 +811,37 @@ class BotMonitor:
             log_service_event(500, f"Ошибка скачивания вложения {url}: {error_message}")  # Дублируем ошибку без кода ответа
             return None, error_message, None  # Возвращаем пустой путь и текст ошибки
 
+    def _describe_missing_download_url(self, att_type: Optional[str], attachment: Dict) -> str:
+        attachment = attachment if isinstance(attachment, dict) else {}  # Нормализуем вложение к словарю
+        content = attachment.get(att_type) if isinstance(att_type, str) else {}  # Получаем вложенный блок по типу
+        if att_type == "video":  # Обрабатываем случай видео
+            video_block = content if isinstance(content, dict) else {}  # Нормализуем блок видео
+            files_block = video_block.get("files") if isinstance(video_block.get("files"), dict) else {}  # Извлекаем блок файлов mp4, если есть
+            if files_block:  # Проверяем наличие блока files без mp4-ссылок
+                return "Есть блок files, но внутри нет mp4-ссылок"  # Возвращаем пояснение про пустые ссылки
+            player_link = video_block.get("player") if isinstance(video_block, dict) else None  # Забираем ссылку на плеер, если она есть
+            if player_link:  # Проверяем, есть ли хотя бы ссылка на плеер
+                return "Есть только ссылка на плеер VK, mp4 отсутствует"  # Сообщаем, что доступен лишь плеер
+            if not video_block:  # Проверяем, пришел ли блок video
+                return "Видео без блока video в payload"  # Поясняем, что данных для скачивания нет
+            return "Видео без ссылок mp4 и без fallback плеера"  # Сообщаем, что нет ни mp4, ни плеера
+        if att_type == "photo":  # Обрабатываем случай фото
+            if isinstance(content, dict) and content.get("sizes"):  # Проверяем наличие размеров
+                return "Фото без пригодных размеров для скачивания"  # Сообщаем, что размеры есть, но ссылки нет
+            return "Фото без поля sizes/url в данных"  # Поясняем отсутствие ключевых полей
+        if att_type == "audio_message":  # Обрабатываем голосовые сообщения
+            return "Аудиосообщение без ссылок link_ogg/link_mp3"  # Сообщаем про отсутствие ссылок на аудио
+        if att_type == "doc":  # Обрабатываем документы
+            doc_block = content if isinstance(content, dict) else {}  # Нормализуем блок документа
+            if doc_block:  # Проверяем, что блок документа присутствует
+                return "Документ без поля url в payload"  # Поясняем, что ссылка не передана
+            return "Документ без блока doc"  # Сообщаем про полное отсутствие данных документа
+        if isinstance(content, dict) and content.get("url"):  # Проверяем наличие универсального поля url
+            return "Ссылка url есть, но не подошла под известные типы"  # Сообщаем о неклассифицированной ссылке
+        if att_type:  # Проверяем наличие типа вложения
+            return f"Тип {att_type} без поля url"  # Формируем сообщение по типу без ссылки
+        return "Неизвестный тип вложения без ссылки url"  # Сообщаем, что тип не определён и ссылки нет
+
     def _normalize_attachment(self, attachment: Dict, peer_id: Optional[int], message_id: Optional[int]) -> Dict:
         normalized = dict(attachment) if isinstance(attachment, dict) else {}  # Копируем вложение, чтобы не трогать оригинал
         att_type = normalized.get("type")  # Получаем тип вложения
@@ -828,7 +859,9 @@ class BotMonitor:
             normalized["download_state"] = "failed"  # Помечаем скачивание как неуспешное, чтобы показать индикатор проблемы
             return normalized  # Возвращаем вложение без попытки скачивания файла
         if not download_url:  # Проверяем, что ссылка для скачивания так и не появилась
-            normalized["download_error"] = "Нет доступной ссылки для скачивания вложения"  # Сообщаем причину отсутствия файла
+            missing_reason = self._describe_missing_download_url(att_type, normalized)  # Формируем развернутое пояснение, почему ссылка не найдена
+            normalized["download_error"] = f"Нет доступной ссылки для скачивания вложения: {missing_reason}"  # Сообщаем причину отсутствия файла с деталями
+            log_service_event(422, normalized["download_error"])  # Фиксируем проблему в сервисных логах для диагностики
             return normalized  # Возвращаем вложение без попытки загрузки
         if download_url:  # Если удалось получить ссылку
             target_path = self._build_local_path(peer_id, message_id, download_url, att_type or "file")  # Формируем путь сохранения

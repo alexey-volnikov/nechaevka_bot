@@ -113,6 +113,13 @@ class BotMonitorVideoDownloadTest(unittest.TestCase):  # Определяем н
         self.assertIn("HTTP 404", normalized.get("download_error", ""))  # Убеждаемся, что код ответа попал в причину
         self.assertIn("Not Found", normalized.get("download_error", ""))  # Проверяем наличие текстового пояснения
 
+    def test_missing_download_url_reports_reason(self):  # Проверяем, что отсутствие ссылки сопровождается пояснением
+        attachment = {"type": "video", "video": {}}  # Формируем видео без ссылок mp4 и без player
+        normalized = self.monitor._normalize_attachment(attachment, peer_id=77, message_id=88)  # Нормализуем вложение без доступных ссылок
+        self.assertEqual(normalized.get("download_state"), "missing")  # Убеждаемся, что статус выставлен как отсутствующий
+        self.assertIn("Нет доступной ссылки для скачивания вложения", normalized.get("download_error", ""))  # Проверяем, что базовая формулировка присутствует
+        self.assertIn("Видео без блока video", normalized.get("download_error", ""))  # Убеждаемся, что добавлено детальное пояснение
+
 
 if __name__ == "__main__":  # Точка входа для запуска файла напрямую
     unittest.main()  # Запускаем тестовый раннер
