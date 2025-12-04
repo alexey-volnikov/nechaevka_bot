@@ -74,12 +74,13 @@ def build_service_logger() -> logging.Logger:  # Конструирует сер
     return service_logger  # Возвращаем готовый логгер
 
 
-def log_service_event(status_code: int, message: str) -> None:  # Упрощенный вызов для записи сервисных событий
-    """Пишет важное сервисное событие с кодом и русским пояснением."""
+def log_service_event(status_code: int, message: str, persist_success: bool = False) -> None:  # Упрощенный вызов для записи сервисных событий
+    """Пишет сервисное событие с опциональным сохранением успешных запросов."""
 
     description = SERVICE_STATUS_EXPLANATIONS.get(status_code, "Сервисное сообщение")  # Находим пояснение по коду
     service_logger.info(message, extra={"status_code": status_code, "status_description": description})  # Логируем событие в файл
-    if service_event_logger is not None:  # Проверяем, инициализирован ли логгер базы
+    should_persist = persist_success or status_code >= 400  # Решаем, писать ли успешные события в базу
+    if should_persist and service_event_logger is not None:  # Проверяем, инициализирован ли логгер базы и нужно ли писать
         service_event_logger.log_event(status_code, description, message)  # Дублируем событие в базу с локальным временем
 
 

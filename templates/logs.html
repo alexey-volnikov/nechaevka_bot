@@ -277,6 +277,10 @@
     } // Конец функции сохранения активной галереи при очистке
     let serviceOffset = 0; // Текущее смещение
     let serviceTotal = 0; // Общее количество сервисных событий
+    const serviceHashRequested = window.location.hash.includes('service-alerts'); // Флаг наличия якоря сервисных логов в URL
+    if (serviceHashRequested) { // Если в адресе сразу указаны сервисные логи
+      serviceTypeSelect.value = 'important'; // Ставим фильтр «Важные» до загрузки данных
+    } // Конец предварительной установки фильтра
 
     const timezoneInfo = Intl.DateTimeFormat().resolvedOptions(); // Читаем параметры локальной таймзоны
     const timezoneOffsetMinutes = new Date().getTimezoneOffset(); // Получаем смещение в минутах относительно UTC
@@ -712,6 +716,18 @@
       messagesTabBtn.classList.add('bg-dark', 'border', 'border-secondary'); // Добавляем стили неактивной кнопки сообщений
     } // Конец функции переключения на сервисные логи
 
+    function handleHashNavigation() { // Обрабатываем якорь в адресной строке
+      const wantsService = window.location.hash.includes('service-alerts'); // Проверяем, нужен ли раздел сервисных логов
+      if (wantsService) { // Если нужно открыть сервисные логи
+        serviceTypeSelect.value = 'important'; // Ставим фильтр «Важные» по умолчанию
+        serviceOffset = 0; // Сбрасываем смещение пагинации
+        switchToService(); // Переключаемся на вкладку сервисных логов
+        refreshServiceLogs(); // Обновляем таблицу с новым фильтром
+      } else { // Если якоря нет или он другой
+        switchToMessages(); // Возвращаемся на вкладку логов сообщений
+      } // Конец проверки якоря
+    } // Конец функции обработки якоря
+
     function renderPeers(peers) { // Функция отрисовки списка чатов
       peerFilter.innerHTML = '<option value="">Все чаты</option>'; // Сбрасываем селектор
       (peers || []).forEach((peer) => { // Перебираем чаты
@@ -930,13 +946,17 @@
       refreshServiceLogs(); // Перезапрашиваем сервисные логи при показе
     }); // Конец обработчика вкладки сервисных логов
 
+    window.addEventListener('hashchange', () => { // Подписываемся на изменения якоря в адресе
+      handleHashNavigation(); // Переключаем вкладки в зависимости от нового якоря
+    }); // Конец обработчика изменения якоря
+
     limitInput.value = initialLimit; // Устанавливаем стартовый лимит
     renderPeers(initialPeers || []); // Отрисовываем селектор чатов
     renderLogs(initialLogs || []); // Отрисовываем стартовые логи
     serviceTotal = (initialServiceLogs || []).length; // Запоминаем количество стартовых сервисных логов
     servicePageLabel.textContent = serviceTotal ? `Показано ${Math.min(serviceTotal, Number(serviceLimitInput.value) || 50)} из ${serviceTotal}` : 'Нет данных'; // Показываем подпись пагинации
     renderServiceLogs(initialServiceLogs || []); // Отрисовываем стартовые сервисные логи
-    switchToMessages(); // Устанавливаем вкладку сообщений активной при загрузке
+    handleHashNavigation(); // Выбираем нужную вкладку с учетом якоря
   </script> <!-- Конец скрипта -->
 </body> <!-- Конец тела -->
 </html> <!-- Конец документа -->
