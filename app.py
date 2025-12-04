@@ -865,7 +865,10 @@ class BotMonitor:
             if download_error_cls and isinstance(exc, download_error_cls):  # Проверяем, что поймали специфичную ошибку yt-dlp
                 error_text = str(exc)  # Извлекаем текст ошибки
                 if "Access restricted" in error_text:  # Ищем признак ограниченного доступа к ролику
-                    friendly_message = "Доступ к видео ограничен владельцем: нужен access_key или авторизованный аккаунт"  # Готовим понятное сообщение пользователю
+                    friendly_message = (
+                        "Доступ к видео ограничен владельцем: нужен access_key или авторизация, "
+                        "иначе лонгпулл не отдаёт mp4 и плеер нельзя скачать"
+                    )  # Готовим понятное сообщение пользователю с пояснением про ограничения лонгпулла
                     logger.warning("Видео недоступно для скачивания: %s", friendly_message)  # Логируем предупреждение
                     log_service_event(403, f"yt-dlp отказано в доступе для {player_url}: {error_text}")  # Пишем сервисное событие с кодом 403
                     return None, friendly_message  # Возвращаем понятную причину
