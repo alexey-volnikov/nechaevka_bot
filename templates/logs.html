@@ -199,29 +199,7 @@
     </div> <!-- Конец секции сервисных логов -->
   </div> <!-- Конец контейнера -->
 
-  <div id="gallery-modal" class="gallery-backdrop"> <!-- Фон модального окна галереи -->
-    <div class="gallery-body"> <!-- Тело модалки -->
-      <div class="d-flex justify-content-between align-items-center"> <!-- Шапка модалки -->
-        <div class="fw-semibold">Просмотр вложений</div> <!-- Заголовок модалки -->
-        <button type="button" class="btn btn-outline-light btn-sm" id="gallery-close">Закрыть</button> <!-- Кнопка закрытия -->
-      </div> <!-- Конец шапки -->
-      <div id="gallery-strip" class="attachment-group flex-wrap"> <!-- Полоса миниатюр вложений -->
-        <span class="text-secondary small">Здесь появятся все вложения сообщения</span> <!-- Плейсхолдер полосы -->
-      </div> <!-- Конец полосы миниатюр -->
-      <div class="gallery-media" id="gallery-media"> <!-- Блок медиа -->
-        <div class="text-secondary">Нет выбранного вложения</div> <!-- Плейсхолдер -->
-      </div> <!-- Конец блока медиа -->
-      <div class="gallery-actions"> <!-- Панель управления -->
-        <button type="button" class="btn btn-outline-light gallery-nav-btn" id="gallery-prev">←</button> <!-- Кнопка назад -->
-        <div class="gallery-meta"> <!-- Описание -->
-          <div id="gallery-caption" class="text-light">—</div> <!-- Подпись -->
-          <div id="gallery-origin" class="text-secondary">Источник неизвестен</div> <!-- Источник -->
-          <div id="gallery-links" class="small">—</div> <!-- Ссылки -->
-        </div> <!-- Конец описания -->
-        <button type="button" class="btn btn-outline-light gallery-nav-btn" id="gallery-next">→</button> <!-- Кнопка вперед -->
-      </div> <!-- Конец панели управления -->
-    </div> <!-- Конец тела модалки -->
-  </div> <!-- Конец фона модалки -->
+  {% include 'partials/gallery.html' %} <!-- Подключаем общую разметку модального окна галереи -->
 
   <script> // Начало скрипта
     const initialLogs = {{ initial_logs|tojson }}; // Стартовые логи из шаблона
