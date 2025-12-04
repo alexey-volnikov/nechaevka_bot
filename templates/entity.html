@@ -104,26 +104,34 @@
         </div> <!-- Конец правой части -->
       </div> <!-- Конец заголовка -->
       <div class="table-responsive"> <!-- Обертка таблицы -->
+        {% set show_chat_column = entity_type != 'chat' %} <!-- Флаг отображения столбца чата (скрываем в профиле чата) -->
+        {% set show_sender_column = entity_type == 'chat' %} <!-- Флаг отображения столбца отправителя (скрываем в профиле человека) -->
+        {% set column_count = 3 + (1 if show_chat_column else 0) + (1 if show_sender_column else 0) %} <!-- Рассчитываем количество столбцов для корректного colspan -->
         <table class="table table-striped align-middle mb-0"> <!-- Таблица -->
           <thead class="text-secondary"> <!-- Заголовок таблицы -->
             <tr> <!-- Строка заголовков -->
               <th>Время</th> <!-- Колонка времени -->
+              {% if show_chat_column %} <!-- Если нужно показать столбец чата -->
               <th>Чат</th> <!-- Колонка чата -->
+              {% endif %} <!-- Конец проверки столбца чата -->
+              {% if show_sender_column %} <!-- Если нужно показать столбец отправителя -->
               <th>Отправитель</th> <!-- Колонка автора -->
+              {% endif %} <!-- Конец проверки столбца отправителя -->
               <th>Вложения</th> <!-- Колонка вложений -->
               <th>Текст</th> <!-- Колонка текста -->
             </tr> <!-- Конец строки заголовков -->
           </thead> <!-- Конец заголовка -->
           <tbody> <!-- Тело таблицы -->
             {% if not payload.messages %} <!-- Если нет данных -->
-            <tr> <!-- Плейсхолдер -->
-              <td colspan="5" class="text-secondary">Нет данных</td> <!-- Текст плейсхолдера -->
+            <tr> <!-- Плейсхолде -->
+              <td colspan="{{ column_count }}" class="text-secondary">Нет данных</td> <!-- Текст плейсхолдера с динамическим количеством столбцов -->
             </tr> <!-- Конец плейсхолдера -->
             {% else %} <!-- Ветка с данными -->
               {% for message in payload.messages %} <!-- Перебираем сообщения -->
               <tr> <!-- Строка сообщения -->
                 {% set gallery_key = 'entity-msg-' ~ loop.index0 %} <!-- Формируем уникальный ключ галереи для строки -->
                 <td data-time>{{ message.created_at or '—' }}</td> <!-- Ячейка времени -->
+                {% if show_chat_column %} <!-- Если показываем столбец чата -->
                 <td> <!-- Ячейка чата -->
                   {% if message.peer_id %} <!-- Если есть peer_id -->
                   <a href="/chat/{{ message.peer_id }}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2"> <!-- Ссылка на чат -->
@@ -136,6 +144,8 @@
                   <span class="text-secondary">—</span> <!-- Плейсхолдер -->
                   {% endif %} <!-- Конец проверки peer_id -->
                 </td> <!-- Конец ячейки чата -->
+                {% endif %} <!-- Конец проверки отображения столбца чата -->
+                {% if show_sender_column %} <!-- Если показываем столбец отправителя -->
                 <td> <!-- Ячейка отправителя -->
                   {% if message.from_id %} <!-- Проверяем наличие отправителя -->
                   <a href="/user/{{ message.from_id }}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2 flex-wrap"> <!-- Ссылка на пользователя -->
@@ -151,6 +161,7 @@
                   <span class="text-secondary">—</span> <!-- Плейсхолдер -->
                   {% endif %} <!-- Конец проверки отправителя -->
                 </td> <!-- Конец ячейки отправителя -->
+                {% endif %} <!-- Конец проверки отображения столбца отправителя -->
                 <td> <!-- Ячейка вложений -->
                   {% set attachment_count = message.attachments|length if message.attachments else 0 %} <!-- Считаем количество вложений -->
                   {% if attachment_count > 0 %} <!-- Если вложения есть -->
@@ -166,6 +177,8 @@
           </tbody> <!-- Конец тела таблицы -->
         </table> <!-- Конец таблицы -->
       </div> <!-- Конец обертки таблицы -->
+
+
     </div> <!-- Конец блока таблицы -->
   </div> <!-- Конец контейнера -->
 
