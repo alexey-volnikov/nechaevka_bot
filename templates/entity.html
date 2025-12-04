@@ -28,9 +28,19 @@
     .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачные ячейки */
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатость */
     .text-secondary-small { color: #94a3b8; font-size: 13px; } /* Серый мелкий текст */
+    .gallery-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 16px; } /* Затемненный фон галереи */
+    .gallery-body { background: #0b1220; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; max-width: 900px; width: 100%; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); display: flex; flex-direction: column; gap: 12px; padding: 16px; } /* Контейнер галереи */
+    .gallery-media { position: relative; min-height: 320px; display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.03); border-radius: 12px; overflow: hidden; } /* Блок медиа */
+    .gallery-media img, .gallery-media video { max-height: 540px; width: 100%; object-fit: contain; border-radius: 12px; background: #0b1220; } /* Медиа внутри галереи */
+    .gallery-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; } /* Панель действий галереи */
+    .gallery-meta { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: #cbd5e1; } /* Метаданные выбранного вложения */
+    .gallery-nav-btn { min-width: 42px; } /* Минимальная ширина кнопок навигации */
+    .gallery-thumb { margin: 2px; } /* Отступы миниатюр */
+    .gallery-thumb.active { border-width: 2px !important; } /* Подсветка активной миниатюры */
   </style> <!-- Конец пользовательских стилей -->
 </head> <!-- Конец шапки -->
 <body class="pb-5"> <!-- Тело страницы -->
+  {% include 'partials/gallery.html' %} <!-- Подключаем общую разметку модального окна галереи -->
   <div class="container py-4"> <!-- Контейнер -->
     <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4 glass shadow-soft p-4"> <!-- Шапка профиля -->
       <div class="d-flex align-items-center gap-3"> <!-- Левая часть с аватаром -->
@@ -94,25 +104,34 @@
         </div> <!-- Конец правой части -->
       </div> <!-- Конец заголовка -->
       <div class="table-responsive"> <!-- Обертка таблицы -->
+        {% set show_chat_column = entity_type != 'chat' %} <!-- Флаг отображения столбца чата (скрываем в профиле чата) -->
+        {% set show_sender_column = entity_type == 'chat' %} <!-- Флаг отображения столбца отправителя (скрываем в профиле человека) -->
+        {% set column_count = 3 + (1 if show_chat_column else 0) + (1 if show_sender_column else 0) %} <!-- Рассчитываем количество столбцов для корректного colspan -->
         <table class="table table-striped align-middle mb-0"> <!-- Таблица -->
           <thead class="text-secondary"> <!-- Заголовок таблицы -->
             <tr> <!-- Строка заголовков -->
               <th>Время</th> <!-- Колонка времени -->
+              {% if show_chat_column %} <!-- Если нужно показать столбец чата -->
               <th>Чат</th> <!-- Колонка чата -->
+              {% endif %} <!-- Конец проверки столбца чата -->
+              {% if show_sender_column %} <!-- Если нужно показать столбец отправителя -->
               <th>Отправитель</th> <!-- Колонка автора -->
+              {% endif %} <!-- Конец проверки столбца отправителя -->
               <th>Вложения</th> <!-- Колонка вложений -->
               <th>Текст</th> <!-- Колонка текста -->
             </tr> <!-- Конец строки заголовков -->
           </thead> <!-- Конец заголовка -->
           <tbody> <!-- Тело таблицы -->
             {% if not payload.messages %} <!-- Если нет данных -->
-            <tr> <!-- Плейсхолдер -->
-              <td colspan="5" class="text-secondary">Нет данных</td> <!-- Текст плейсхолдера -->
+            <tr> <!-- Плейсхолде -->
+              <td colspan="{{ column_count }}" class="text-secondary">Нет данных</td> <!-- Текст плейсхолдера с динамическим количеством столбцов -->
             </tr> <!-- Конец плейсхолдера -->
             {% else %} <!-- Ветка с данными -->
               {% for message in payload.messages %} <!-- Перебираем сообщения -->
               <tr> <!-- Строка сообщения -->
+                {% set gallery_key = 'entity-msg-' ~ loop.index0 %} <!-- Формируем уникальный ключ галереи для строки -->
                 <td data-time>{{ message.created_at or '—' }}</td> <!-- Ячейка времени -->
+                {% if show_chat_column %} <!-- Если показываем столбец чата -->
                 <td> <!-- Ячейка чата -->
                   {% if message.peer_id %} <!-- Если есть peer_id -->
                   <a href="/chat/{{ message.peer_id }}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2"> <!-- Ссылка на чат -->
@@ -125,6 +144,8 @@
                   <span class="text-secondary">—</span> <!-- Плейсхолдер -->
                   {% endif %} <!-- Конец проверки peer_id -->
                 </td> <!-- Конец ячейки чата -->
+                {% endif %} <!-- Конец проверки отображения столбца чата -->
+                {% if show_sender_column %} <!-- Если показываем столбец отправителя -->
                 <td> <!-- Ячейка отправителя -->
                   {% if message.from_id %} <!-- Проверяем наличие отправителя -->
                   <a href="/user/{{ message.from_id }}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2 flex-wrap"> <!-- Ссылка на пользователя -->
@@ -140,16 +161,11 @@
                   <span class="text-secondary">—</span> <!-- Плейсхолдер -->
                   {% endif %} <!-- Конец проверки отправителя -->
                 </td> <!-- Конец ячейки отправителя -->
+                {% endif %} <!-- Конец проверки отображения столбца отправителя -->
                 <td> <!-- Ячейка вложений -->
-                  {% if message.attachments %} <!-- Если есть вложения -->
-                  <div class="d-flex flex-wrap gap-1"> <!-- Группа вложений -->
-                    {% for att in message.attachments %} <!-- Перебираем вложения -->
-                    {% set att_type = att.type or 'generic' %} <!-- Определяем тип -->
-                    <a href="{{ att.public_url or att.url }}" target="_blank" class="attachment-pill {{ 'attachment-photo' if att_type == 'photo' else 'attachment-video' if att_type == 'video' else 'attachment-doc' if att_type == 'doc' else 'attachment-link' if att_type == 'link' else 'attachment-audio' if att_type in ['audio', 'audio_message'] else 'attachment-sticker' if att_type == 'sticker' else 'attachment-generic' }}"> <!-- Пилюля -->
-                      <span>{{ att_type }}</span> <!-- Подпись типа -->
-                    </a> <!-- Конец ссылки -->
-                    {% endfor %} <!-- Конец цикла вложений -->
-                  </div> <!-- Конец группы вложений -->
+                  {% set attachment_count = message.attachments|length if message.attachments else 0 %} <!-- Считаем количество вложений -->
+                  {% if attachment_count > 0 %} <!-- Если вложения есть -->
+                  <span class="attachment-pill attachment-generic" data-gallery-key="{{ gallery_key }}">📎 {{ attachment_count }}</span> <!-- Показываем скрепку и количество вложений с ключом галереи -->
                   {% else %} <!-- Ветка без вложений -->
                   <span class="text-secondary">—</span> <!-- Плейсхолдер -->
                   {% endif %} <!-- Конец проверки вложений -->
@@ -161,6 +177,8 @@
           </tbody> <!-- Конец тела таблицы -->
         </table> <!-- Конец таблицы -->
       </div> <!-- Конец обертки таблицы -->
+
+
     </div> <!-- Конец блока таблицы -->
   </div> <!-- Конец контейнера -->
 
@@ -172,6 +190,169 @@
       const parsed = iso ? new Date(iso) : null; // Парсим дату
       cell.textContent = parsed && !Number.isNaN(parsed.valueOf()) ? formatter.format(parsed) : '—'; // Подставляем форматированное значение
     }); // Конец цикла
+
+    const galleryModal = document.getElementById('gallery-modal'); // Находим фон модалки галереи
+    const galleryStrip = document.getElementById('gallery-strip'); // Находим полосу миниатюр
+    const galleryMedia = document.getElementById('gallery-media'); // Находим контейнер медиа
+    const galleryCaption = document.getElementById('gallery-caption'); // Находим подпись файла
+    const galleryOrigin = document.getElementById('gallery-origin'); // Находим подпись источника
+    const galleryLinks = document.getElementById('gallery-links'); // Находим блок ссылок
+    const galleryPrev = document.getElementById('gallery-prev'); // Находим кнопку «назад»
+    const galleryNext = document.getElementById('gallery-next'); // Находим кнопку «вперед»
+    const galleryClose = document.getElementById('gallery-close'); // Находим кнопку закрытия
+    const serverMessages = {{ payload.messages | tojson }}; // Забираем сообщения с вложениями из шаблона
+    let galleryStore = {}; // Хранилище галерей по ключу
+    let currentGalleryKey = null; // Текущий ключ открытой галереи
+    let currentGalleryIndex = 0; // Текущий индекс выбранного вложения
+
+    function isVideoType(type) { // Проверяем, является ли тип видео
+      return ['video', 'story'].includes(type); // Возвращаем результат проверки по списку типов
+    } // Конец функции проверки видео
+
+    function normalizeAttachmentLink(att) { // Получаем ссылку на вложение
+      if (!att) { // Если вложения нет
+        return null; // Возвращаем пусто
+      } // Конец проверки
+      if (att.url) { // Если есть прямой url
+        return att.url; // Возвращаем url
+      } // Конец проверки прямой ссылки
+      if (att.public_url) { // Если есть публичная ссылка
+        return att.public_url; // Возвращаем публичную ссылку
+      } // Конец проверки публичной ссылки
+      if (att.photo && att.photo.sizes && att.photo.sizes.length) { // Если это фото со списком размеров
+        const sorted = [...att.photo.sizes].sort((a, b) => b.width - a.width); // Сортируем размеры по ширине
+        return sorted[0]?.url || null; // Берем самый широкий вариант
+      } // Конец проверки фото
+      if (att.video && att.video.player) { // Если это видео с полем player
+        return att.video.player; // Возвращаем ссылку на плеер
+      } // Конец проверки видео
+      return null; // Возвращаем пусто, если ничего не нашли
+    } // Конец функции получения ссылки
+
+    function normalizeAttachmentItem(att, originLabel) { // Приводим вложение к единому виду
+      const type = att?.type || 'file'; // Определяем тип
+      const url = normalizeAttachmentLink(att); // Получаем ссылку
+      const caption = att?.title || att?.name || att?.doc?.title || att?.link?.title || att?.photo?.text || att?.description || 'Без описания'; // Формируем подпись
+      if (!url) { // Если ссылки нет
+        return null; // Не добавляем элемент в галерею
+      } // Конец проверки ссылки
+      return { // Возвращаем нормализованное вложение
+        url, // Поле ссылки
+        type, // Тип вложения
+        caption, // Подпись файла
+        origin: originLabel || 'Сообщение', // Источник
+      }; // Конец объекта
+    } // Конец функции нормализации
+
+    function registerGallery(items, galleryKey, originLabel) { // Регистрируем галерею по ключу
+      if (!Array.isArray(items) || !items.length) { // Если вложений нет
+        return; // Выходим без регистрации
+      } // Конец проверки вложений
+      const normalized = items // Приводим вложения к единому виду
+        .map((att) => normalizeAttachmentItem(att, originLabel)) // Нормализуем каждое вложение
+        .filter(Boolean); // Убираем пустые
+      if (!normalized.length) { // Если после фильтрации пусто
+        return; // Выходим
+      } // Конец проверки пустого списка
+      galleryStore[galleryKey] = { items: normalized, meta: { peer: originLabel || 'Сообщение' } }; // Сохраняем галерею в хранилище
+    } // Конец функции регистрации
+
+    function renderGalleryStrip(galleryData) { // Рисуем миниатюры галереи
+      if (!galleryData || !Array.isArray(galleryData.items) || galleryData.items.length === 0) { // Проверяем входные данные
+        galleryStrip.innerHTML = '<span class="text-secondary small">Вложений нет</span>'; // Показываем плейсхолдер
+        return; // Прерываем выполнение
+      } // Конец проверки
+      const buttons = galleryData.items.map((item, idx) => { // Строим кнопки
+        const label = item.type || 'Файл'; // Получаем подпись типа
+        const activeClass = idx === currentGalleryIndex ? 'active' : ''; // Определяем активный класс
+        return `<button type="button" class="btn btn-outline-light btn-sm gallery-thumb ${activeClass}" data-gallery-index="${idx}">${idx + 1}. ${label}</button>`; // Возвращаем HTML кнопки
+      }); // Конец сборки кнопок
+      galleryStrip.innerHTML = buttons.join(''); // Подставляем миниатюры в DOM
+    } // Конец функции полосы миниатюр
+
+    function renderGallerySlide(galleryData, index) { // Рисуем выбранное вложение
+      if (!galleryData || !Array.isArray(galleryData.items) || galleryData.items.length === 0) { // Проверяем наличие данных
+        galleryMedia.innerHTML = '<div class="text-secondary">Вложений нет</div>'; // Плейсхолдер медиа
+        galleryCaption.textContent = '—'; // Очищаем подпись
+        galleryOrigin.textContent = 'Источник неизвестен'; // Очищаем источник
+        galleryLinks.innerHTML = '—'; // Очищаем ссылки
+        return; // Выходим
+      } // Конец проверки данных
+      const boundedIndex = Math.max(0, Math.min(index, galleryData.items.length - 1)); // Гарантируем допустимый индекс
+      currentGalleryIndex = boundedIndex; // Обновляем индекс
+      const item = galleryData.items[boundedIndex]; // Берем нужное вложение
+      const isVideo = isVideoType(item.type); // Проверяем, видео ли это
+      const mediaHtml = isVideo ? `<video controls src="${item.url}" class="w-100" preload="metadata"></video>` : `<img src="${item.url}" alt="Вложение" loading="lazy" />`; // Формируем HTML медиа
+      galleryMedia.innerHTML = mediaHtml; // Подставляем медиа
+      galleryCaption.textContent = item.caption || 'Без описания'; // Обновляем подпись
+      galleryOrigin.textContent = item.origin || galleryData.meta.peer || 'Источник неизвестен'; // Обновляем источник
+      galleryLinks.innerHTML = `<a href="${item.url}" target="_blank" rel="noopener noreferrer">Открыть оригинал</a>`; // Добавляем ссылку
+      renderGalleryStrip(galleryData); // Перерисовываем миниатюры
+    } // Конец функции показа слайда
+
+    function openGallery(key, index = 0) { // Открываем галерею
+      const galleryData = galleryStore[key]; // Берем данные по ключу
+      if (!galleryData) { // Если нет данных
+        return; // Не открываем модалку
+      } // Конец проверки
+      currentGalleryKey = key; // Запоминаем ключ
+      renderGallerySlide(galleryData, index); // Рисуем выбранный слайд
+      galleryModal.style.display = 'flex'; // Показываем модалку
+    } // Конец функции открытия
+
+    function closeGallery() { // Закрываем галерею
+      galleryModal.style.display = 'none'; // Скрываем модалку
+      currentGalleryKey = null; // Сбрасываем ключ
+      currentGalleryIndex = 0; // Сбрасываем индекс
+    } // Конец функции закрытия
+
+    function moveGallery(delta) { // Перелистываем галерею
+      if (!currentGalleryKey || !galleryStore[currentGalleryKey]) { // Проверяем наличие активной галереи
+        return; // Выходим, если нечего листать
+      } // Конец проверки
+      const galleryData = galleryStore[currentGalleryKey]; // Берем текущие данные
+      const nextIndex = (currentGalleryIndex + delta + galleryData.items.length) % galleryData.items.length; // Вычисляем новый индекс по кругу
+      renderGallerySlide(galleryData, nextIndex); // Рисуем новый слайд
+    } // Конец функции перелистывания
+
+    function prepareGalleries() { // Регистрируем все галереи из данных
+      (serverMessages || []).forEach((msg, idx) => { // Перебираем сообщения
+        const galleryKey = `entity-msg-${idx}`; // Формируем ключ
+        registerGallery(msg.attachments || [], galleryKey, msg.peer_title || msg.from_name || 'Сообщение'); // Регистрируем вложения
+      }); // Конец цикла
+    } // Конец функции подготовки
+
+    function bindGalleryTriggers() { // Навешиваем клики на скрепки
+      document.querySelectorAll('[data-gallery-key]').forEach((node) => { // Перебираем все элементы со скрепкой
+        node.addEventListener('click', (event) => { // Слушаем клик
+          event.preventDefault(); // Блокируем переход по ссылке
+          const key = node.getAttribute('data-gallery-key'); // Забираем ключ галереи
+          openGallery(key, 0); // Открываем первую вложение
+        }); // Конец обработчика клика
+      }); // Конец перебора элементов
+    } // Конец функции биндинга
+
+    galleryPrev.addEventListener('click', () => moveGallery(-1)); // Листаем назад по клику
+    galleryNext.addEventListener('click', () => moveGallery(1)); // Листаем вперед по клику
+    galleryClose.addEventListener('click', closeGallery); // Закрываем модалку по кнопке
+    galleryStrip.addEventListener('click', (event) => { // Слушаем клики по миниатюрам
+      const target = event.target.closest('[data-gallery-index]'); // Ищем кнопку миниатюры
+      if (!target) { // Если клик не по кнопке
+        return; // Ничего не делаем
+      } // Конец проверки
+      const index = Number(target.getAttribute('data-gallery-index')); // Забираем индекс
+      if (Number.isNaN(index)) { // Проверяем валидность
+        return; // Выходим при ошибке индекса
+      } // Конец проверки
+      const galleryData = galleryStore[currentGalleryKey]; // Берем текущие данные галереи
+      if (!galleryData) { // Если данных нет
+        return; // Выходим
+      } // Конец проверки
+      renderGallerySlide(galleryData, index); // Рисуем выбранный слайд
+    }); // Конец обработчика клика по миниатюрам
+
+    prepareGalleries(); // Регистрируем все вложения после загрузки страницы
+    bindGalleryTriggers(); // Навешиваем клики на скрепки
   </script> <!-- Конец скрипта -->
 </body> <!-- Конец тела -->
 </html> <!-- Конец документа -->

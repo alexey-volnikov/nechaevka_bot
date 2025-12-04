@@ -238,29 +238,7 @@
     </div> <!-- Конец строки для сообщений -->
   </div> <!-- Конец контейнера -->
 
-  <div id="gallery-modal" class="gallery-backdrop"> <!-- Фон модального окна галереи -->
-    <div class="gallery-body"> <!-- Тело модального окна -->
-      <div class="d-flex justify-content-between align-items-center"> <!-- Шапка модалки -->
-        <div class="fw-semibold">Просмотр вложений</div> <!-- Заголовок модалки -->
-        <button type="button" class="btn btn-outline-light btn-sm" id="gallery-close">Закрыть</button> <!-- Кнопка закрытия -->
-      </div> <!-- Конец шапки -->
-      <div id="gallery-strip" class="attachment-group flex-wrap"> <!-- Полоса миниатюр вложений -->
-        <span class="text-secondary small">Здесь появятся все вложения сообщения</span> <!-- Плейсхолдер полосы миниатюр -->
-      </div> <!-- Конец полосы миниатюр -->
-      <div class="gallery-media" id="gallery-media"> <!-- Блок медиа внутри галереи -->
-        <div class="text-secondary">Нет выбранного вложения</div> <!-- Плейсхолдер, если нет данных -->
-      </div> <!-- Конец блока медиа -->
-      <div class="gallery-actions"> <!-- Панель управления галереей -->
-        <button type="button" class="btn btn-outline-light gallery-nav-btn" id="gallery-prev">←</button> <!-- Кнопка предыдущего элемента -->
-        <div class="gallery-meta"> <!-- Описание текущего вложения -->
-          <div id="gallery-caption" class="text-light">—</div> <!-- Подпись файла -->
-          <div id="gallery-origin" class="text-secondary">Источник неизвестен</div> <!-- Источник файла -->
-          <div id="gallery-links" class="small">—</div> <!-- Ссылки и действия -->
-        </div> <!-- Конец описания -->
-        <button type="button" class="btn btn-outline-light gallery-nav-btn" id="gallery-next">→</button> <!-- Кнопка следующего элемента -->
-      </div> <!-- Конец панели управления -->
-    </div> <!-- Конец тела модалки -->
-  </div> <!-- Конец фона модального окна -->
+  {% include 'partials/gallery.html' %} <!-- Подключаем общую разметку модального окна галереи -->
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script> <!-- Подключаем Bootstrap JS для тултипов -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script> <!-- Подключаем Chart.js -->
@@ -633,7 +611,7 @@
       } // Конец проверки пустоты
       const previewLink = findFirstAttachmentLink(attachments) || findFirstCopyHistoryLink(copyHistory); // Ищем ссылку первого вложения для открытия
       const className = pickAttachmentClass(total === 1 ? (attachments?.[0]?.type || 'file') : 'file'); // Определяем класс бейджа
-      const label = `📎 Скрепка (${total})`; // Формируем текст бейджа
+      const label = `📎 ${total}`; // Формируем лаконичный текст бейджа со скрепкой и количеством
       if (previewLink) { // Если удалось найти ссылку
         return `<a class="attachment-pill ${className}" href="${previewLink}" data-gallery-key="${galleryKey}" data-gallery-url="${previewLink}" target="_blank" rel="noopener noreferrer">${label}</a>`; // Возвращаем кликабельный бейдж
       } // Конец проверки ссылки
