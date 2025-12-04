@@ -847,6 +847,7 @@ class BotMonitor:
             return None, "Нет ссылки на плеер VK для скачивания"  # Возвращаем причину отсутствия ссылки
         if ytdlp is None:  # Проверяем, доступна ли библиотека yt-dlp
             return None, "yt-dlp не установлен: добавьте зависимость для скачивания через плеер"  # Сообщаем, что нужен пакет
+        download_error_cls = getattr(getattr(ytdlp, "utils", None), "DownloadError", None)  # Достаём класс ошибки yt-dlp, если он есть
         safe_base = target_path.with_suffix("")  # Убираем расширение, чтобы yt-dlp добавил своё
         out_template = f"{safe_base}.%(ext)s"  # Формируем шаблон имени файла для yt-dlp
         ydl_options = {"outtmpl": out_template, "quiet": True, "no_warnings": True}  # Настраиваем yt-dlp без лишнего вывода
@@ -861,6 +862,13 @@ class BotMonitor:
                 return downloaded_path, None  # Возвращаем путь и отсутствие ошибки
             return None, "yt-dlp не сохранил файл по ссылке плеера"  # Сообщаем об отсутствии результата
         except Exception as exc:  # Обрабатываем любые сбои yt-dlp
+            if download_error_cls and isinstance(exc, download_error_cls):  # Проверяем, что поймали специфичную ошибку yt-dlp
+                error_text = str(exc)  # Извлекаем текст ошибки
+                if "Access restricted" in error_text:  # Ищем признак ограниченного доступа к ролику
+                    friendly_message = "Доступ к видео ограничен владельцем: нужен access_key или авторизованный аккаунт"  # Готовим понятное сообщение пользователю
+                    logger.warning("Видео недоступно для скачивания: %s", friendly_message)  # Логируем предупреждение
+                    log_service_event(403, f"yt-dlp отказано в доступе для {player_url}: {error_text}")  # Пишем сервисное событие с кодом 403
+                    return None, friendly_message  # Возвращаем понятную причину
             error_message = f"yt-dlp: {exc}"  # Формируем человекочитаемое сообщение
             logger.warning("Не удалось скачать видео через плеер %s: %s", player_url, error_message)  # Пишем предупреждение в лог
             log_service_event(500, f"Ошибка yt-dlp при скачивании {player_url}: {exc}")  # Дублируем ошибку в сервисные логи
