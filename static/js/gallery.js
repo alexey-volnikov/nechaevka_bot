@@ -146,6 +146,16 @@
     } // Завершаем ветку явного статуса
     return false; // Без статуса считаем, что индикатор ожидания не нужен
   } // Конец функции проверки состояния вложения
+  // Проверяем, что вложение помечено как неуспешно скачанное
+  function isFailedAttachment(att) {
+    // Убеждаемся, что передан корректный объект
+    if (!att || typeof att !== 'object') {
+      return false; // Возвращаем false при некорректных данных
+    } // Завершаем проверку корректности
+    // Считаем ошибкой статусы failed или missing
+    const state = att.download_state; // Берём состояние загрузки
+    return state === 'failed' || state === 'missing'; // Возвращаем true, если загрузка не удалась
+  } // Конец функции проверки ошибки вложения
   // Считаем количество вложений с признаком ожидания в обычном списке
   function countPendingAttachments(list) {
     // Проверяем, что список корректен
@@ -154,6 +164,14 @@
     } // Завершаем проверку формата
     return list.reduce((total, att) => total + (isPendingAttachment(att) ? 1 : 0), 0); // Складываем только ожидающие вложения
   } // Конец функции подсчёта ожиданий во вложениях
+  // Считаем количество вложений с ошибками загрузки в обычном списке
+  function countFailedAttachments(list) {
+    // Проверяем корректность списка
+    if (!Array.isArray(list)) {
+      return 0; // Возвращаем 0 при некорректном формате
+    } // Завершаем проверку формата
+    return list.reduce((total, att) => total + (isFailedAttachment(att) ? 1 : 0), 0); // Складываем только ошибочные вложения
+  } // Конец функции подсчёта ошибок во вложениях
   // Считаем количество вложений в copy_history, которые еще не готовы
   function countPendingCopyHistory(copyHistory) {
     // Проверяем, что copy_history задан корректно
@@ -172,6 +190,24 @@
       return total + pendingSelf + pendingNested; // Возвращаем суммарное количество ожиданий
     }, 0); // Начальное значение счётчика
   } // Конец функции подсчёта ожиданий в copy_history
+  // Считаем количество вложений с ошибками загрузки во вложенных репостах
+  function countFailedCopyHistory(copyHistory) {
+    // Проверяем корректность copy_history
+    if (!Array.isArray(copyHistory)) {
+      return 0; // Возвращаем 0 при ошибке формата
+    } // Завершаем проверку формата
+    // Перебираем все записи copy_history
+    return copyHistory.reduce((total, entry) => {
+      // Пропускаем некорректные элементы
+      if (!entry || typeof entry !== 'object') {
+        return total; // Возвращаем накопленное значение
+      } // Завершаем проверку элемента
+      // Считаем ошибки в текущем списке вложений и вложенных репостах
+      const failedSelf = countFailedAttachments(entry.attachments); // Количество ошибок в текущем репосте
+      const failedNested = countFailedCopyHistory(entry.copy_history); // Количество ошибок во вложенных репостах
+      return total + failedSelf + failedNested; // Возвращаем суммарное количество ошибок
+    }, 0); // Начальное значение счётчика
+  } // Конец функции подсчёта ошибок в copy_history
   // Собираем элементы вложений в плоский список для галереи
   function collectAttachmentItems(list, origin, bucket, seen) {
     // Проверяем, что список является массивом
@@ -499,15 +535,21 @@
     } // Завершаем проверку отсутствия данных
     // Считаем количество вложений, которые еще не готовы
     const pendingTotal = countPendingAttachments(attachments) + countPendingCopyHistory(copyHistory); // Ожидающие вложения
+    // Считаем количество вложений, которые не удалось сохранить
+    const failedTotal = countFailedAttachments(attachments) + countFailedCopyHistory(copyHistory); // Ошибки загрузки
     // Формируем бейдж загрузки при наличии ожиданий
     const pendingBadge = pendingTotal
       ? `<span class="attachment-pill attachment-pending" data-gallery-key="${galleryKey}">⏳ Вложения сохраняются (${pendingTotal})</span>`
       : ''; // Готовим бейдж ожидания или пустую строку
+    // Формируем бейдж ошибок при наличии неудачных загрузок
+    const failedBadge = failedTotal
+      ? `<span class="attachment-pill attachment-failed" data-gallery-key="${galleryKey}">⚠️ Вложения не сохранились (${failedTotal})</span>`
+      : ''; // Готовим бейдж ошибки или пустую строку
     // Строим бейдж со скрепкой и количеством
     const summary = buildAttachmentSummary(attachments, copyHistory, galleryKey); // HTML скрепки
     // Готовим блок репостов при наличии
     const copyBlock = hasCopy ? renderCopyHistory(copyHistory, galleryKey) : ''; // HTML блоков репостов
-    return `<div class="content-cell">${pendingBadge}${summary}${copyBlock}</div>`; // Возвращаем итоговую разметку ячейки с индикатором ожидания
+    return `<div class="content-cell">${pendingBadge}${failedBadge}${summary}${copyBlock}</div>`; // Возвращаем итоговую разметку ячейки с индикаторами
   } // Конец функции сборки ячейки
   // Отрисовываем полосу миниатюр галереи
   function renderGalleryStrip(galleryData) {

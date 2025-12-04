@@ -74,6 +74,18 @@ class BotMonitorVideoDownloadTest(unittest.TestCase):  # Определяем н
         with open(local_path, "rb") as saved_file:  # Открываем сохраненный файл
             self.assertEqual(saved_file.read(), fake_body)  # Сверяем содержимое с тестовыми данными
 
+    def test_video_without_files_keeps_player_link(self):  # Проверяем, что при отсутствии mp4 сохраняется ссылка на плеер
+        attachment = {  # Формируем вложение без прямых ссылок на mp4
+            "type": "video",  # Указываем тип вложения как видео
+            "video": {"player": "https://vk.com/video_ext.php?test"},  # Добавляем только ссылку на плеер VK
+        }  # Завершаем словарь вложения
+        normalized = self.monitor._normalize_attachment(attachment, peer_id=33, message_id=44)  # Нормализуем вложение без скачивания
+        self.assertIsNone(normalized.get("download_url"))  # Убеждаемся, что прямая ссылка mp4 не определена
+        self.assertEqual(normalized.get("download_state"), "failed")  # Проверяем, что статус помечен как неуспешный
+        self.assertEqual(normalized.get("url"), "https://vk.com/video_ext.php?test")  # Убеждаемся, что ссылка на плеер сохранена
+        self.assertIsNone(normalized.get("local_path"))  # Проверяем, что файл не создавался
+        self.assertTrue(normalized.get("download_error"))  # Убеждаемся, что причина ошибки записана
+
 
 if __name__ == "__main__":  # Точка входа для запуска файла напрямую
     unittest.main()  # Запускаем тестовый раннер

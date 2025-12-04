@@ -798,6 +798,14 @@ class BotMonitor:
         normalized["download_url"] = download_url  # Сохраняем URL в явном виде
         normalized["transcript"] = normalized.get("transcript")  # Резерв для будущей расшифровки аудио
         normalized["download_state"] = "pending" if download_url else "missing"  # Помечаем статус скачивания по умолчанию
+        normalized["download_error"] = None  # Подготавливаем поле для сообщения об ошибке скачивания
+        video_block = normalized.get("video") if isinstance(normalized.get("video"), dict) else {}  # Извлекаем блок видео при наличии
+        player_fallback = video_block.get("player") if isinstance(video_block, dict) else None  # Получаем ссылку на плеер видео как запасной вариант
+        if not download_url and att_type == "video" and player_fallback:  # Проверяем, что mp4 не найден, но есть ссылка на плеер
+            normalized["url"] = player_fallback  # Сохраняем ссылку на плеер, чтобы фронт мог открыть видео хотя бы во вкладке VK
+            normalized["download_error"] = "Нет прямой ссылки mp4, используется плеер VK"  # Фиксируем причину отсутствия файла
+            normalized["download_state"] = "failed"  # Помечаем скачивание как неуспешное, чтобы показать индикатор проблемы
+            return normalized  # Возвращаем вложение без попытки скачивания файла
         if download_url:  # Если удалось получить ссылку
             target_path = self._build_local_path(peer_id, message_id, download_url, att_type or "file")  # Формируем путь сохранения
             saved_path = self._download_file(download_url, target_path)  # Пытаемся скачать файл
@@ -806,6 +814,7 @@ class BotMonitor:
                 normalized["download_state"] = "ready"  # Отмечаем успешную загрузку вложения
             else:  # Если скачать не удалось
                 normalized["download_state"] = "failed"  # Фиксируем неуспешное скачивание
+                normalized["download_error"] = "Не удалось скачать вложение"  # Добавляем причину ошибки для фронта
         return normalized  # Возвращаем нормализованное вложение
 
     def _save_attachments(self, attachments: List[Dict], peer_id: Optional[int], message_id: Optional[int]) -> List[Dict]:
