@@ -132,6 +132,47 @@
       return null; // Возвращаем null при ошибке сериализации
     } // Завершаем обработку исключений
   } // Конец функции формирования сигнатуры
+  // Проверяем, находится ли вложение в состоянии ожидания или ошибки загрузки
+  function isPendingAttachment(att) {
+    // Убеждаемся, что передан объект
+    if (!att || typeof att !== 'object') {
+      return false; // Возвращаем false для некорректных данных
+    } // Завершаем проверку корректности
+    // Считываем статус загрузки
+    const state = att.download_state; // Берем значение статуса загрузки
+    const hasLocalPath = Boolean(att.local_path); // Проверяем, есть ли локальный путь у вложения
+    // Считаем ожиданием любые состояния кроме ready или отсутствие локального пути без статуса
+    if (state) { // Если статус задан явно
+      return state !== 'ready'; // Возвращаем true для pending/failed/missing
+    } // Завершаем ветку явного статуса
+    return !hasLocalPath; // Если статуса нет и файл не сохранен, считаем его ожидающим
+  } // Конец функции проверки состояния вложения
+  // Считаем количество вложений с признаком ожидания в обычном списке
+  function countPendingAttachments(list) {
+    // Проверяем, что список корректен
+    if (!Array.isArray(list)) {
+      return 0; // Возвращаем 0 при ошибке формата
+    } // Завершаем проверку формата
+    return list.reduce((total, att) => total + (isPendingAttachment(att) ? 1 : 0), 0); // Складываем только ожидающие вложения
+  } // Конец функции подсчёта ожиданий во вложениях
+  // Считаем количество вложений в copy_history, которые еще не готовы
+  function countPendingCopyHistory(copyHistory) {
+    // Проверяем, что copy_history задан корректно
+    if (!Array.isArray(copyHistory)) {
+      return 0; // Возвращаем 0 при некорректных данных
+    } // Завершаем проверку формата
+    // Итерируем по всем записям репостов
+    return copyHistory.reduce((total, entry) => {
+      // Если запись некорректна, пропускаем
+      if (!entry || typeof entry !== 'object') {
+        return total; // Возвращаем накопленное значение
+      } // Завершаем проверку записи
+      // Подсчитываем ожидания в вложениях и вложенных репостах
+      const pendingSelf = countPendingAttachments(entry.attachments); // Считаем вложения текущей записи
+      const pendingNested = countPendingCopyHistory(entry.copy_history); // Рекурсивно считаем вложенные репосты
+      return total + pendingSelf + pendingNested; // Возвращаем суммарное количество ожиданий
+    }, 0); // Начальное значение счётчика
+  } // Конец функции подсчёта ожиданий в copy_history
   // Собираем элементы вложений в плоский список для галереи
   function collectAttachmentItems(list, origin, bucket, seen) {
     // Проверяем, что список является массивом
@@ -457,11 +498,17 @@
     if (!hasAttachments && !hasCopy) {
       return '<span class="text-secondary">—</span>'; // Возвращаем тире
     } // Завершаем проверку отсутствия данных
+    // Считаем количество вложений, которые еще не готовы
+    const pendingTotal = countPendingAttachments(attachments) + countPendingCopyHistory(copyHistory); // Ожидающие вложения
+    // Формируем бейдж загрузки при наличии ожиданий
+    const pendingBadge = pendingTotal
+      ? `<span class="attachment-pill attachment-pending" data-gallery-key="${galleryKey}">⏳ Вложения сохраняются (${pendingTotal})</span>`
+      : ''; // Готовим бейдж ожидания или пустую строку
     // Строим бейдж со скрепкой и количеством
     const summary = buildAttachmentSummary(attachments, copyHistory, galleryKey); // HTML скрепки
     // Готовим блок репостов при наличии
     const copyBlock = hasCopy ? renderCopyHistory(copyHistory, galleryKey) : ''; // HTML блоков репостов
-    return `<div class="content-cell">${summary}${copyBlock}</div>`; // Возвращаем итоговую разметку ячейки
+    return `<div class="content-cell">${pendingBadge}${summary}${copyBlock}</div>`; // Возвращаем итоговую разметку ячейки с индикатором ожидания
   } // Конец функции сборки ячейки
   // Отрисовываем полосу миниатюр галереи
   function renderGalleryStrip(galleryData) {
