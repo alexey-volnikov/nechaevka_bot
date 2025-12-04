@@ -360,6 +360,102 @@ class EventLogger:
             rows = cursor.fetchall()  # Читаем результаты
         return {int(row["peer_id"]): int(row["cnt"]) for row in rows if row["peer_id"] is not None}  # Возвращаем словарь peer_id->количество
 
+    def summarize_peer(self, peer_id: int) -> Optional[Dict[str, object]]:
+        with self._lock:  # Начинаем потокобезопасное чтение
+            cursor = self._connection.cursor()  # Берем курсор
+            cursor.execute(  # Считаем основную статистику по чату
+                """
+                SELECT
+                    peer_id,
+                    COALESCE(peer_title, '') AS peer_title,
+                    COALESCE(peer_avatar, '') AS peer_avatar,
+                    COUNT(*) AS total_messages,
+                    MAX(created_at) AS last_message_time,
+                    COUNT(DISTINCT from_id) AS unique_senders
+                FROM events
+                WHERE event_type = 'message' AND peer_id = ?
+                """,
+                (int(peer_id),),
+            )
+            summary_row = cursor.fetchone()  # Читаем результат агрегации
+            cursor.execute(  # Подтягиваем последнюю строку с ненулевым названием для корректной подписи
+                """
+                SELECT peer_title, peer_avatar
+                FROM events
+                WHERE event_type = 'message' AND peer_id = ? AND peer_title IS NOT NULL
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (int(peer_id),),
+            )
+            title_row = cursor.fetchone()  # Читаем строку с названием
+        if not summary_row or summary_row["total_messages"] == 0:  # Проверяем, есть ли сообщения у чата
+            return None  # Возвращаем пустой результат при отсутствии данных
+        return {  # Собираем словарь сводки по чату
+            "peer_id": summary_row["peer_id"],  # ID чата
+            "peer_title": (title_row["peer_title"] if title_row else summary_row["peer_title"]) or "Чат без названия",  # Название
+            "peer_avatar": (title_row["peer_avatar"] if title_row else summary_row["peer_avatar"]) or None,  # Аватар
+            "total_messages": summary_row["total_messages"],  # Общее количество сообщений
+            "last_message_time": summary_row["last_message_time"],  # Время последнего сообщения
+            "unique_senders": summary_row["unique_senders"],  # Количество уникальных отправителей
+        }
+
+    def summarize_user(self, user_id: int) -> Optional[Dict[str, object]]:
+        with self._lock:  # Начинаем потокобезопасное чтение
+            cursor = self._connection.cursor()  # Берем курсор
+            cursor.execute(  # Считаем основную статистику по пользователю
+                """
+                SELECT
+                    from_id,
+                    COALESCE(from_name, '') AS from_name,
+                    COALESCE(from_avatar, '') AS from_avatar,
+                    COUNT(*) AS total_messages,
+                    MAX(created_at) AS last_message_time,
+                    COUNT(DISTINCT peer_id) AS unique_peers
+                FROM events
+                WHERE event_type = 'message' AND from_id = ?
+                """,
+                (int(user_id),),
+            )
+            summary_row = cursor.fetchone()  # Читаем результат агрегации
+            cursor.execute(  # Ищем последнюю запись с заполненным именем, чтобы показать его в карточке
+                """
+                SELECT from_name, from_avatar
+                FROM events
+                WHERE event_type = 'message' AND from_id = ? AND from_name IS NOT NULL
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (int(user_id),),
+            )
+            name_row = cursor.fetchone()  # Читаем строку с именем
+        if not summary_row or summary_row["total_messages"] == 0:  # Проверяем наличие сообщений пользователя
+            return None  # Возвращаем пустой результат при отсутствии данных
+        return {  # Собираем словарь сводки по пользователю
+            "from_id": summary_row["from_id"],  # ID отправителя
+            "from_name": (name_row["from_name"] if name_row else summary_row["from_name"]) or "Неизвестный отправитель",  # Имя
+            "from_avatar": (name_row["from_avatar"] if name_row else summary_row["from_avatar"]) or None,  # Аватар
+            "total_messages": summary_row["total_messages"],  # Количество сообщений
+            "last_message_time": summary_row["last_message_time"],  # Время последнего сообщения
+            "unique_peers": summary_row["unique_peers"],  # Количество уникальных чатов
+        }
+
+    def fetch_messages_by_user(self, user_id: int, limit: int = 50, peer_id: Optional[int] = None) -> List[Dict]:
+        with self._lock:  # Начинаем безопасное чтение
+            cursor = self._connection.cursor()  # Берем курсор
+            if peer_id is None:  # Если фильтр по чату не задан
+                cursor.execute(  # Запрос по отправителю
+                    "SELECT * FROM events WHERE event_type = ? AND from_id = ? ORDER BY id DESC LIMIT ?",
+                    ("message", int(user_id), limit),
+                )
+            else:  # Если нужно ограничить конкретным чатом
+                cursor.execute(  # Запрос по отправителю и чату
+                    "SELECT * FROM events WHERE event_type = ? AND from_id = ? AND peer_id = ? ORDER BY id DESC LIMIT ?",
+                    ("message", int(user_id), int(peer_id), limit),
+                )
+            rows = cursor.fetchall()  # Читаем строки
+        return [dict(row) for row in rows]  # Возвращаем список словарей
+
     def count_messages(self, range_minutes: Optional[int] = None) -> int:
         now = datetime.now().astimezone()  # Берем текущее локальное время
         params: List[object] = ["message"]  # Готовим параметры запроса
@@ -1053,6 +1149,20 @@ def build_dashboard_app(
         except Exception:  # Обрабатываем неверный формат строки
             return None  # Возвращаем None при ошибке
 
+    def build_chat_payload(peer_id: int, limit: int = 200) -> Dict[str, object]:
+        summary = event_logger.summarize_peer(peer_id)  # Получаем сводку по чату из базы
+        if summary and summary.get("last_message_time"):  # Проверяем наличие временной метки
+            summary["last_message_time"] = localize_iso(summary.get("last_message_time"))  # Переводим время в локальную зону
+        messages = [serialize_log(row) for row in event_logger.fetch_messages(peer_id=peer_id, limit=limit)]  # Получаем логи по чату
+        return {"summary": summary, "messages": messages}  # Возвращаем словарь с данными страницы
+
+    def build_user_payload(user_id: int, limit: int = 200) -> Dict[str, object]:
+        summary = event_logger.summarize_user(user_id)  # Получаем сводку по отправителю
+        if summary and summary.get("last_message_time"):  # Проверяем, есть ли время последнего сообщения
+            summary["last_message_time"] = localize_iso(summary.get("last_message_time"))  # Конвертируем время в локальную зону
+        messages = [serialize_log(row) for row in event_logger.fetch_messages_by_user(user_id=user_id, limit=limit)]  # Получаем логи пользователя
+        return {"summary": summary, "messages": messages}  # Возвращаем словарь с данными страницы
+
     def build_public_attachment_url(local_path: Optional[str]) -> Optional[str]:  # Строит публичную ссылку на локальный файл вложения
         try:  # Пытаемся собрать публичную ссылку на вложение
             if not local_path:  # Проверяем, передан ли путь
@@ -1210,6 +1320,48 @@ def build_dashboard_app(
                 "storage": assemble_storage(),  # Описание файла базы
             }
         )  # Возвращаем обзорную информацию
+
+    @app.route("/chat/<int:peer_id>")
+    def chat_page(peer_id: int):
+        limit_raw = request.args.get("limit")  # Читаем необязательный лимит логов
+        try:  # Пытаемся преобразовать строку в число
+            limit = int(limit_raw) if limit_raw else 200  # Используем значение по умолчанию при отсутствии параметра
+        except Exception:  # Отлавливаем некорректное значение
+            limit = 200  # Возвращаем запасной лимит
+        limit = max(10, min(limit, 500))  # Ограничиваем диапазон лимита
+        payload = build_chat_payload(peer_id, limit=limit)  # Собираем данные чата и логи
+        if not payload.get("summary"):  # Проверяем, удалось ли найти чат
+            log_service_event(404, f"Чат {peer_id} не найден для страницы профиля")  # Фиксируем отсутствие данных
+            return "Чат не найден", 404  # Возвращаем 404
+        log_service_event(200, f"Отдаём страницу профиля чата {peer_id}")  # Фиксируем успешную отдачу страницы
+        return render_template(
+            "entity.html",  # Шаблон страницы профиля
+            entity_type="chat",  # Тип сущности — чат
+            payload=payload,  # Данные профиля и сообщений
+            limit=limit,  # Используемый лимит
+            demo_mode=demo_mode,  # Флаг демо-режима
+        )  # Возвращаем HTML страницы
+
+    @app.route("/user/<int:user_id>")
+    def user_page(user_id: int):
+        limit_raw = request.args.get("limit")  # Читаем необязательный лимит логов
+        try:  # Пробуем привести значение к числу
+            limit = int(limit_raw) if limit_raw else 200  # Используем значение по умолчанию, если параметр не передан
+        except Exception:  # Обрабатываем неверный ввод
+            limit = 200  # Возвращаем запасной лимит
+        limit = max(10, min(limit, 500))  # Ограничиваем диапазон лимита
+        payload = build_user_payload(user_id, limit=limit)  # Собираем данные пользователя и его сообщения
+        if not payload.get("summary"):  # Проверяем, удалось ли найти пользователя
+            log_service_event(404, f"Пользователь {user_id} не найден для страницы профиля")  # Пишем в сервисные логи
+            return "Пользователь не найден", 404  # Возвращаем 404
+        log_service_event(200, f"Отдаём страницу профиля пользователя {user_id}")  # Фиксируем отдачу страницы
+        return render_template(
+            "entity.html",  # Шаблон страницы профиля
+            entity_type="user",  # Тип сущности — пользователь
+            payload=payload,  # Данные профиля и сообщений
+            limit=limit,  # Используемый лимит
+            demo_mode=demo_mode,  # Флаг демо-режима
+        )  # Возвращаем HTML страницы
 
     @app.route("/api/logs")
     def logs():

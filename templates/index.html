@@ -769,14 +769,20 @@
 
     function buildPeerCell(message) { // Функция подготовки подписи чата без ID
       const chatName = message.peer_title || 'Чат без названия'; // Определяем отображаемое имя чата
-      return buildAvatarLabel(chatName, message.peer_avatar); // Возвращаем подпись с аватаркой
+      if (message.peer_id) { // Если есть идентификатор чата
+        return `<a href="/chat/${message.peer_id}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2">${buildAvatarLabel(chatName, message.peer_avatar)}</a>`; // Возвращаем подпись как ссылку на профиль чата
+      } // Конец проверки наличия ID
+      return buildAvatarLabel(chatName, message.peer_avatar); // Возвращаем подпись с аватаркой без ссылки
     } // Конец функции подготовки чата
 
     function buildSenderCell(message) { // Функция подготовки подписи отправителя с отметкой бота
       const senderName = message.from_name || 'Неизвестный отправитель'; // Определяем имя отправителя
       const senderLabel = buildAvatarLabel(senderName, message.from_avatar); // Формируем подпись с аватаркой
       const botBadge = message.is_bot ? '<span class="sender-badge">Бот</span>' : ''; // Готовим плашку для бота
-      return `<div class="d-flex align-items-center gap-2 flex-wrap">${senderLabel}${botBadge}</div>`; // Собираем итоговый HTML
+      if (message.from_id) { // Если указан отправитель
+        return `<div class="d-flex align-items-center gap-2 flex-wrap"><a href="/user/${message.from_id}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2">${senderLabel}</a>${botBadge}</div>`; // Собираем HTML с ссылкой на профиль пользователя
+      } // Конец проверки наличия отправителя
+      return `<div class="d-flex align-items-center gap-2 flex-wrap">${senderLabel}${botBadge}</div>`; // Собираем итоговый HTML без ссылки
     } // Конец функции подготовки отправителя
 
     let renderedMessageKeys = new Set(); // Хранилище ключей уже отрисованных сообщений
@@ -867,7 +873,7 @@
         const localizedType = translatedTypes[type] || translatedTypes.unknown; // Переводим тип на русский
         const messagesCount = Number(conv.messages_count ?? 0); // Нормализуем количество сообщений
         const avatarUrl = conv.chat_settings?.photo?.photo_50 || conv.chat_settings?.photo?.photo_100 || conv.peer?.avatar; // Определяем ссылку на аватар беседы
-        const titleCell = buildAvatarLabel(title, avatarUrl); // Формируем подпись с аватаркой
+        const titleCell = peer.id ? `<a href="/chat/${peer.id}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2">${buildAvatarLabel(title, avatarUrl)}</a>` : buildAvatarLabel(title, avatarUrl); // Формируем подпись с аватаркой и ссылкой
         const row = document.createElement('tr'); // Создаем строку
         row.innerHTML = `<td>${peer.id ?? '—'}</td><td>${localizedType}</td><td>${titleCell}</td><td>${messagesCount}</td>`; // Заполняем строку
         conversationsBody.appendChild(row); // Добавляем строку
