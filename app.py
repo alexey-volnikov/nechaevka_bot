@@ -749,10 +749,12 @@ class BotMonitor:
             player_link = items[0].get("player") if isinstance(items[0], dict) else None  # Достаём ссылку на плеер из первого элемента
             if isinstance(player_link, str) and player_link:  # Проверяем, что ссылка корректна
                 return player_link  # Возвращаем найденную ссылку на плеер
-            return None  # Возвращаем пустое значение, если player не найден
         except Exception as exc:  # Обрабатываем любые исключения от VK API
             logger.debug("Не удалось запросить ссылку плеера: %s", exc)  # Пишем отладочное сообщение о неудаче
-            return None  # Возвращаем пустой результат при ошибке
+        page_link = f"https://vk.com/video{owner_id}_{video_id}"  # Собираем ссылку на страницу видео по owner_id и id
+        if access_key:  # Проверяем, что есть access_key для приватных роликов
+            page_link += f"?access_key={access_key}"  # Добавляем access_key в строку запроса
+        return page_link  # Возвращаем хотя бы ссылку на страницу видео, даже если плеер не вернулся из API
 
     def _pick_attachment_url(self, attachment: Dict) -> Optional[str]:
         if not isinstance(attachment, dict):  # Проверяем формат вложения
