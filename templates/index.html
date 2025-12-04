@@ -862,10 +862,24 @@
       } // Конец проверки диапазона
     } // Конец функции
 
+    function formatStorageSize(bytes) { // Функция форматирования размера в удобные единицы
+      if (!bytes || bytes <= 0) { // Проверяем наличие значения
+        return '0 КБ'; // Возвращаем плейсхолдер для пустого размера
+      } // Конец проверки пустого значения
+      const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ']; // Массив единиц измерения
+      let size = bytes; // Текущее значение размера
+      let index = 0; // Индекс текущей единицы измерения
+      while (size >= 1024 && index < units.length - 1) { // Пока размер превышает порог и есть единицы крупнее
+        size /= 1024; // Переводим в следующую единицу
+        index += 1; // Сдвигаем индекс единицы
+      } // Конец цикла перевода
+      const rounded = index === 0 ? Math.round(size) : Math.round(size * 10) / 10; // Округляем: байты до целого, остальное до десятых
+      return `${rounded} ${units[index]}`; // Возвращаем строку с числом и единицей
+    } // Конец функции форматирования размера
+
     function renderStorage(storage) { // Функция вывода информации о файле базы
       storagePathEl.textContent = storage.path || '—'; // Показываем путь до файла
-      const sizeKb = storage.size_bytes ? Math.max(1, Math.round(storage.size_bytes / 1024)) : 0; // Переводим байты в килобайты
-      storageSizeEl.textContent = storage.size_bytes ? `${sizeKb} КБ` : '0 КБ'; // Показываем размер
+      storageSizeEl.textContent = formatStorageSize(storage.size_bytes || 0); // Показываем размер с автоматическим выбором единиц
       storageStatusEl.textContent = storage.exists ? 'Создан и доступен' : 'Файла пока нет'; // Показываем статус
       storageStatusEl.className = storage.exists ? 'text-success' : 'text-warning'; // Меняем цвет статуса
     } // Конец функции
