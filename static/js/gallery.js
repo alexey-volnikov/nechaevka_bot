@@ -172,6 +172,26 @@
     } // Завершаем проверку формата
     return list.reduce((total, att) => total + (isFailedAttachment(att) ? 1 : 0), 0); // Складываем только ошибочные вложения
   } // Конец функции подсчёта ошибок во вложениях
+  // Собираем текстовые причины неудачных загрузок в обычном списке
+  function collectFailedReasons(list, bucket) {
+    // Проверяем, что список корректен
+    if (!Array.isArray(list)) {
+      return; // Прерываемся при неверном формате
+    } // Завершаем проверку формата
+    list.forEach((att) => {
+      // Пропускаем некорректные элементы
+      if (!att || typeof att !== 'object') {
+        return; // Ничего не добавляем для некорректных данных
+      } // Завершаем проверку элемента
+      // Смотрим только на вложения со статусом ошибки
+      if (!isFailedAttachment(att)) {
+        return; // Пропускаем успешные вложения
+      } // Завершаем ветку успешных вложений
+      // Берём пояснение ошибки, если оно есть
+      const reason = typeof att.download_error === 'string' && att.download_error.trim() ? att.download_error.trim() : 'Причина не указана'; // Формируем строку причины
+      bucket.add(reason); // Добавляем строку в множество для уникальности
+    }); // Завершаем обход списка вложений
+  } // Конец функции сбора причин ошибок во вложениях
   // Считаем количество вложений в copy_history, которые еще не готовы
   function countPendingCopyHistory(copyHistory) {
     // Проверяем, что copy_history задан корректно
@@ -208,6 +228,21 @@
       return total + failedSelf + failedNested; // Возвращаем суммарное количество ошибок
     }, 0); // Начальное значение счётчика
   } // Конец функции подсчёта ошибок в copy_history
+  // Собираем причины ошибок загрузки во вложенных репостах
+  function collectFailedReasonsCopyHistory(copyHistory, bucket) {
+    // Проверяем корректность copy_history
+    if (!Array.isArray(copyHistory)) {
+      return; // Завершаем работу при неверном формате
+    } // Завершаем проверку формата
+    copyHistory.forEach((entry) => {
+      // Пропускаем некорректные записи
+      if (!entry || typeof entry !== 'object') {
+        return; // Ничего не добавляем
+      } // Завершаем проверку записи
+      collectFailedReasons(entry.attachments, bucket); // Собираем причины ошибок в текущих вложениях репоста
+      collectFailedReasonsCopyHistory(entry.copy_history, bucket); // Рекурсивно собираем причины во вложенных репостах
+    }); // Завершаем обход copy_history
+  } // Конец функции сбора причин в copy_history
   // Собираем элементы вложений в плоский список для галереи
   function collectAttachmentItems(list, origin, bucket, seen) {
     // Проверяем, что список является массивом
@@ -537,13 +572,19 @@
     const pendingTotal = countPendingAttachments(attachments) + countPendingCopyHistory(copyHistory); // Ожидающие вложения
     // Считаем количество вложений, которые не удалось сохранить
     const failedTotal = countFailedAttachments(attachments) + countFailedCopyHistory(copyHistory); // Ошибки загрузки
+    // Собираем пояснения, почему загрузки завершились ошибкой
+    const failedReasons = new Set(); // Подготавливаем множество уникальных причин
+    collectFailedReasons(attachments, failedReasons); // Добавляем причины ошибок из вложений сообщения
+    collectFailedReasonsCopyHistory(copyHistory, failedReasons); // Добавляем причины из вложенных репостов
+    // Формируем читаемый текст причин или плейсхолдер, если их нет
+    const failedReasonsText = failedReasons.size ? Array.from(failedReasons).join('; ') : 'Причина не указана'; // Конструируем строку пояснения
     // Формируем бейдж загрузки при наличии ожиданий
     const pendingBadge = pendingTotal
       ? `<span class="attachment-pill attachment-pending" data-gallery-key="${galleryKey}">⏳ Вложения сохраняются (${pendingTotal})</span>`
       : ''; // Готовим бейдж ожидания или пустую строку
     // Формируем бейдж ошибок при наличии неудачных загрузок
     const failedBadge = failedTotal
-      ? `<span class="attachment-pill attachment-failed" data-gallery-key="${galleryKey}">⚠️ Вложения не сохранились (${failedTotal})</span>`
+      ? `<span class="attachment-pill attachment-failed" data-gallery-key="${galleryKey}">⚠️ Вложения не сохранились (${failedTotal}) — ${failedReasonsText}</span>`
       : ''; // Готовим бейдж ошибки или пустую строку
     // Строим бейдж со скрепкой и количеством
     const summary = buildAttachmentSummary(attachments, copyHistory, galleryKey); // HTML скрепки
