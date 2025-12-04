@@ -31,6 +31,7 @@
     } /* Конец анимации */
     .attachment-pill { display: inline-flex; gap: 6px; align-items: center; padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.05); color: #e2e8f0; font-size: 12px; text-decoration: none; } /* Пилюля для вложения */
     .attachment-pill:hover { text-decoration: none; background: rgba(255, 255, 255, 0.08); } /* Подсветка при наведении */
+    .attachment-pending { border-style: dashed; background: rgba(59, 130, 246, 0.18); color: #cbd5e1; } /* Визуальный акцент ожидания скачивания */
     .attachment-photo { border-color: rgba(59, 130, 246, 0.5); color: #bfdbfe; } /* Цвет для фото */
     .attachment-video { border-color: rgba(244, 114, 182, 0.5); color: #fbcfe8; } /* Цвет для видео */
     .attachment-doc { border-color: rgba(74, 222, 128, 0.5); color: #bbf7d0; } /* Цвет для документов */
@@ -240,6 +241,7 @@
 
   {% include 'partials/gallery.html' %} <!-- Подключаем общую разметку модального окна галереи -->
 
+  <script src="{{ url_for('static', filename='js/gallery.js') }}"></script> <!-- Подключаем общий скрипт галереи -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script> <!-- Подключаем Bootstrap JS для тултипов -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script> <!-- Подключаем Chart.js -->
   <script> // Начало скрипта
@@ -264,35 +266,10 @@
     const storageStatusEl = document.getElementById('storage-status'); // Статус существования файла
     const importantBadge = document.getElementById('important-badge'); // Бейдж важных оповещений
     const timeRangeSelect = document.getElementById('time-range-select'); // Селектор выбора диапазона времени
-    const galleryModal = document.getElementById('gallery-modal'); // Контейнер модалки галереи
-    const galleryMedia = document.getElementById('gallery-media'); // Блок, где показываем медиа
-    const galleryStrip = document.getElementById('gallery-strip'); // Полоса миниатюр для всех вложений
-    const galleryCaption = document.getElementById('gallery-caption'); // Подпись текущего файла
-    const galleryOrigin = document.getElementById('gallery-origin'); // Источник файла
-    const galleryLinks = document.getElementById('gallery-links'); // Блок ссылок и действий
-    const galleryClose = document.getElementById('gallery-close'); // Кнопка закрытия галереи
-    const galleryPrev = document.getElementById('gallery-prev'); // Кнопка предыдущего вложения
-    const galleryNext = document.getElementById('gallery-next'); // Кнопка следующего вложения
-    const galleryStore = {}; // Хранилище списков вложений по сообщениям
-    let currentGalleryKey = null; // Текущий ключ галереи
-    let currentGalleryIndex = 0; // Текущий индекс выбранного вложения
+    const galleryApi = window.galleryBridge || {}; // Получаем общий API галереи из подключенного файла
     let galleryCounter = 0; // Счетчик для генерации уникальных ключей галерей
     let currentPeer = ''; // Текущий выбранный peer_id
     let selectedRange = Number(initialStats?.range_minutes ?? 60); // Текущий выбранный диапазон минут
-
-    function resetGalleryStorePreserveActive() { // Очищаем хранилище галерей, сохраняя открытую
-      const modalOpen = galleryModal.style.display === 'flex'; // Проверяем, открыта ли модалка
-      const preservedKey = modalOpen ? currentGalleryKey : null; // Запоминаем активный ключ
-      const preservedValue = preservedKey ? galleryStore[preservedKey] : null; // Забираем активную галерею
-      Object.keys(galleryStore).forEach((key) => { // Перебираем все ключи
-        if (!preservedKey || key !== preservedKey) { // Если ключ не активный
-          delete galleryStore[key]; // Удаляем из хранилища
-        } // Конец проверки ключа
-      }); // Конец очистки
-      if (preservedKey && preservedValue) { // Если есть активная галерея
-        galleryStore[preservedKey] = preservedValue; // Возвращаем её обратно
-      } // Конец восстановления
-    } // Конец функции сохранения открытой галереи
 
     const timezoneInfo = Intl.DateTimeFormat().resolvedOptions(); // Считываем параметры локальной таймзоны браузера
     const timezoneOffsetMinutes = new Date().getTimezoneOffset(); // Получаем смещение от UTC в минутах
@@ -367,384 +344,6 @@
       return `<div class="d-flex flex-column gap-1"><div class="text-secondary small">Ответ на предыдущее сообщение</div><div class="text-light small">${replyText}</div><div class="d-flex align-items-center gap-2 text-secondary small">${replyAuthorName}${replyBotBadge}</div></div>`; // Возвращаем компактный блок с текстом и автором
     } // Конец функции сборки ответа
 
-    const attachmentTypeLabels = { photo: 'Фото', video: 'Видео', doc: 'Документ', audio_message: 'Голос', audio: 'Аудио', link: 'Ссылка', sticker: 'Стикер', wall: 'Пост', wall_reply: 'Комментарий', market: 'Товар', gift: 'Подарок', story: 'История', graffiti: 'Граффити', podcast: 'Подкаст', share: 'Репост', file: 'Файл' }; // Человекочитаемые подписи типов вложений
-    const attachmentTypeClasses = { photo: 'attachment-photo', video: 'attachment-video', doc: 'attachment-doc', audio: 'attachment-audio', audio_message: 'attachment-audio', link: 'attachment-link', wall: 'attachment-wall', wall_reply: 'attachment-wall', sticker: 'attachment-sticker', default: 'attachment-generic' }; // Классы подсветки для типов
-
-    function normalizeAttachmentLink(att) { // Функция получения ссылки на вложение
-      if (!att || typeof att !== 'object') { // Проверяем корректность объекта
-        return null; // Возвращаем пустое значение
-      } // Конец проверки
-      return att.public_url || att.download_url || att.url || null; // Возвращаем найденную ссылку или null
-    } // Конец функции
-
-    function isVideoType(type) { // Проверяем, является ли тип видеоконтентом
-      return type === 'video' || type === 'story'; // Считаем видео и истории медиаконтентом с плеером
-    } // Конец функции определения видео
-
-    function attachmentSignature(att) { // Формируем сигнатуру вложения для устранения дублей
-      if (!att || typeof att !== 'object') { // Проверяем корректность данных
-        return null; // Возвращаем пустое значение при ошибке
-      } // Конец проверки
-      const type = att.type || (att.photo ? 'photo' : att.video ? 'video' : att.doc ? 'doc' : null); // Определяем тип вложения
-      const nested = type && att[type] && typeof att[type] === 'object' ? att[type] : {}; // Получаем вложенный блок по типу
-      const owner = nested.owner_id; // Читаем owner_id вложения
-      const id = nested.id; // Читаем id вложения
-      const access = nested.access_key; // Читаем access_key вложения
-      if (owner !== undefined && id !== undefined) { // Если есть связка owner_id и id
-        return `${type}:${owner}_${id}_${access || ''}`; // Возвращаем сигнатуру по ID
-      } // Конец проверки идентификаторов
-      const url = normalizeAttachmentLink(att) || att.public_url || att.download_url || att.url; // Подбираем ссылку вложения
-      if (url) { // Если ссылка существует
-        return `${type || 'file'}:${url}`; // Формируем сигнатуру по ссылке
-      } // Конец проверки ссылки
-      try { // Пытаемся сериализовать объект
-        return JSON.stringify(att); // Возвращаем сериализованный объект как сигнатуру
-      } catch (e) { // Ловим ошибки сериализации
-        return null; // Возвращаем пустое значение при исключении
-      } // Конец обработки ошибок
-    } // Конец функции формирования сигнатуры
-
-    function collectAttachmentItems(list, origin, bucket, seen) { // Собираем элементы вложений в плоский список галереи
-      if (!Array.isArray(list)) { // Проверяем формат входящего списка
-        return; // Выходим, если данные некорректны
-      } // Конец проверки
-      list.forEach((att) => { // Перебираем каждое вложение
-        if (!att || typeof att !== 'object') { // Проверяем тип элемента
-          return; // Пропускаем неверные записи
-        } // Конец проверки типа
-        const signature = attachmentSignature(att); // Вычисляем сигнатуру вложения
-        if (signature && seen && seen.has(signature)) { // Проверяем, добавляли ли уже это вложение
-          return; // Пропускаем дубликат
-        } // Конец проверки дубля
-        const url = normalizeAttachmentLink(att); // Получаем ссылку на вложение
-        if (!url) { // Если ссылки нет
-          return; // Пропускаем элемент
-        } // Конец проверки наличия ссылки
-        const type = att.type || 'file'; // Определяем тип вложения
-        const caption = att.title || att.name || att.doc?.title || att.link?.title || att.photo?.text || att.description || ''; // Подбираем подпись вложения
-        if (signature && seen) { // Проверяем, что сигнатура рассчитана и есть набор дублей
-          seen.add(signature); // Добавляем сигнатуру в набор
-        } // Конец добавления сигнатуры
-        bucket.push({ url, type, caption, origin: origin || 'Сообщение' }); // Добавляем элемент в галерею
-      }); // Конец перебора вложений
-    } // Конец функции сборки вложений
-
-    function mergeAttachmentLists(primary, fallback) { // Объединяем вложения из основного блока и payload без дублей
-      const result = []; // Итоговый массив объединенных вложений
-      const seen = new Set(); // Набор ключей для устранения дублей
-      const pushUnique = (item) => { // Вспомогательная функция добавления элемента
-        if (!item || typeof item !== 'object') { // Проверяем корректность вложения
-          return; // Пропускаем некорректные элементы
-        } // Конец проверки
-        const signature = attachmentSignature(item); // Формируем сигнатуру вложения
-        if (signature && seen.has(signature)) { // Проверяем, был ли элемент уже добавлен
-          return; // Пропускаем дубликат
-        } // Конец проверки дубля
-        if (signature) { // Если сигнатура рассчитана
-          seen.add(signature); // Добавляем сигнатуру в набор
-        } // Конец добавления сигнатуры
-        result.push(item); // Кладем вложение в итоговый список
-      }; // Конец вспомогательной функции
-      if (Array.isArray(primary)) { // Проверяем основной список вложений
-        primary.forEach(pushUnique); // Добавляем каждый элемент из основного списка
-      } // Конец проверки основного списка
-      if (Array.isArray(fallback)) { // Проверяем запасной список из payload
-        fallback.forEach(pushUnique); // Добавляем вложения из payload
-      } // Конец проверки fallback
-      return result; // Возвращаем объединенный список
-    } // Конец функции объединения списков вложений
-
-    function extractAttachments(message) { // Извлекаем и объединяем вложения из основного блока и payload
-      const primary = Array.isArray(message?.attachments) ? message.attachments : []; // Забираем вложения сообщения
-      const fallback = message?.payload && Array.isArray(message.payload.attachments) ? message.payload.attachments : []; // Забираем вложения из payload
-      return mergeAttachmentLists(primary, fallback); // Возвращаем объединенный список без дублей
-    } // Конец функции извлечения вложений
-
-    function extractCopyHistory(message) { // Извлекаем copy_history из сообщения или payload
-      const primary = Array.isArray(message?.copy_history) ? message.copy_history : []; // Основной список репостов
-      const fallback = message?.payload && Array.isArray(message.payload.copy_history) ? message.payload.copy_history : []; // Запасной список из payload
-      return [...primary, ...fallback].filter((entry) => entry && typeof entry === 'object'); // Объединяем списки и фильтруем корректные объекты
-    } // Конец функции извлечения copy_history
-
-    function countAttachmentList(list) { // Считает количество вложений в списке
-      if (!Array.isArray(list)) { // Проверяем формат
-        return 0; // Возвращаем ноль при ошибке
-      } // Конец проверки
-      return list.filter((item) => item && typeof item === 'object').length; // Считаем только объекты вложений
-    } // Конец функции подсчета вложений
-
-    function countCopyHistoryAttachments(entries) { // Рекурсивно считает вложения в copy_history
-      if (!Array.isArray(entries)) { // Проверяем формат входных данных
-        return 0; // Возвращаем ноль при ошибке
-      } // Конец проверки
-      return entries.reduce((acc, entry) => { // Накопительно обрабатываем репосты
-        if (!entry || typeof entry !== 'object') { // Проверяем тип элемента
-          return acc; // Возвращаем текущий счетчик без изменений
-        } // Конец проверки
-        const selfCount = countAttachmentList(entry.attachments); // Считаем вложения самого репоста
-        const nestedCount = countCopyHistoryAttachments(entry.copy_history); // Считаем вложения вложенных репостов
-        return acc + selfCount + nestedCount; // Складываем результаты
-      }, 0); // Начальное значение счетчика ноль
-    } // Конец функции рекурсивного подсчета
-
-    function findFirstAttachmentLink(list) { // Ищем первую ссылку вложения в списке
-      if (!Array.isArray(list)) { // Проверяем формат
-        return null; // Возвращаем null при ошибке
-      } // Конец проверки
-      for (const att of list) { // Перебираем вложения
-        const link = normalizeAttachmentLink(att); // Получаем ссылку на вложение
-        if (link) { // Если ссылка найдена
-          return link; // Возвращаем найденную ссылку
-        } // Конец проверки
-      } // Конец цикла
-      return null; // Возвращаем null, если ссылок нет
-    } // Конец функции поиска ссылки
-
-    function findFirstCopyHistoryLink(entries) { // Рекурсивно ищем первую ссылку во вложениях copy_history
-      if (!Array.isArray(entries)) { // Проверяем формат copy_history
-        return null; // Возвращаем null при ошибке
-      } // Конец проверки
-      for (const entry of entries) { // Перебираем репосты
-        if (!entry || typeof entry !== 'object') { // Проверяем тип записи
-          continue; // Пропускаем некорректные элементы
-        } // Конец проверки
-        const direct = findFirstAttachmentLink(entry.attachments); // Пытаемся найти ссылку в вложениях репоста
-        if (direct) { // Если ссылка найдена
-          return direct; // Возвращаем ссылку
-        } // Конец проверки
-        const nested = findFirstCopyHistoryLink(entry.copy_history); // Ищем ссылку во вложенных репостах
-        if (nested) { // Если ссылка найдена
-          return nested; // Возвращаем найденную ссылку
-        } // Конец проверки
-      } // Конец цикла по репостам
-      return null; // Возвращаем null, если ссылок не нашли
-    } // Конец функции поиска ссылки в copy_history
-
-    function collectCopyHistoryItems(entries, origin, bucket, seen) { // Рекурсивно собираем вложения из репостов
-      if (!Array.isArray(entries)) { // Проверяем формат
-        return; // Выходим при ошибке формата
-      } // Конец проверки
-      entries.forEach((entry) => { // Перебираем каждый репост
-        if (!entry || typeof entry !== 'object') { // Проверяем тип
-          return; // Пропускаем некорректные данные
-        } // Конец проверки типа
-        const entryOrigin = entry.from_name ? `Репост от ${entry.from_name}` : origin || 'Репост'; // Формируем подпись источника
-        collectAttachmentItems(entry.attachments || [], entryOrigin, bucket, seen); // Собираем вложения репоста без дублей
-        if (Array.isArray(entry.copy_history) && entry.copy_history.length) { // Проверяем вложенные репосты
-          collectCopyHistoryItems(entry.copy_history, entryOrigin, bucket, seen); // Рекурсивно собираем вложения без дублей
-        } // Конец проверки вложенных репостов
-      }); // Конец перебора репостов
-    } // Конец функции сбора вложений из copy_history
-
-    function registerGallery(message, galleryKey) { // Регистрируем список вложений для галереи
-      if (!galleryKey) { // Проверяем, передан ли ключ
-        return; // Выходим, если ключа нет
-      } // Конец проверки ключа
-      const bucket = []; // Готовим список собранных вложений
-      const seen = new Set(); // Готовим набор сигнатур для устранения дублей
-      const authorLabel = message.from_name || 'Неизвестный отправитель'; // Формируем подпись автора без технических ID
-      const peerLabel = message.peer_title || 'Чат без названия'; // Формируем подпись чата без упоминания ID
-      const meta = { // Готовим описание для подвала галереи
-        author: authorLabel, // Автор сообщения
-        peer: peerLabel, // Чат, где опубликовано
-        text: message.text || 'Без текста', // Текст сообщения
-      }; // Конец блока метаданных
-      const attachments = extractAttachments(message); // Забираем вложения из сообщения или payload
-      const copyHistory = extractCopyHistory(message); // Забираем репосты из сообщения или payload
-      collectAttachmentItems(attachments, 'Сообщение', bucket, seen); // Собираем вложения сообщения без дублей
-      collectCopyHistoryItems(copyHistory, 'Репост', bucket, seen); // Собираем вложения из репостов без дублей
-      if (bucket.length === 0) { // Если вложений нет
-        return; // Не сохраняем пустую галерею
-      } // Конец проверки пустого списка
-      galleryStore[galleryKey] = { items: bucket, meta }; // Сохраняем список и метаданные в хранилище
-    } // Конец регистрации галереи
-
-    function pickAttachmentClass(type) { // Функция выбора CSS-класса для типа
-      if (!type) { // Проверяем наличие типа
-        return attachmentTypeClasses.default; // Возвращаем класс по умолчанию
-      } // Конец проверки
-      return attachmentTypeClasses[type] || attachmentTypeClasses.default; // Возвращаем подходящий класс или запасной
-    } // Конец функции
-
-    function buildAttachmentBadge(att, galleryKey, originLabel) { // Функция сборки HTML для одного вложения
-      const type = att?.type || 'file'; // Определяем тип вложения
-      const readableType = attachmentTypeLabels[type] || type; // Получаем подпись типа
-      const href = normalizeAttachmentLink(att); // Получаем ссылку для открытия
-      const caption = att?.title || att?.name || att?.doc?.title || att?.link?.title || att?.photo?.text || att?.description || ''; // Подбираем подпись
-      const shortCaption = caption ? caption.slice(0, 60) : ''; // Обрезаем подпись до 60 символов
-      const className = pickAttachmentClass(type); // Выбираем класс для подсветки
-      const text = shortCaption ? `${readableType}: ${shortCaption}` : readableType; // Формируем текст бейджа
-      const originAttr = originLabel ? ` data-gallery-origin="${originLabel}"` : ''; // Готовим атрибут источника для клика
-      if (href) { // Если есть ссылка для открытия
-        return `<a class="attachment-pill ${className}" href="${href}" data-gallery-key="${galleryKey}"${originAttr} data-gallery-url="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`; // Возвращаем кликабельный бейдж
-      } // Конец проверки
-      return `<span class="attachment-pill ${className}" data-gallery-key="${galleryKey}"${originAttr}>${text}</span>`; // Возвращаем статичный бейдж, если ссылки нет
-    } // Конец функции
-
-    function renderAttachmentList(list, galleryKey, originLabel) { // Функция рендера группы вложений
-      if (!Array.isArray(list) || !list.length) { // Проверяем наличие вложений
-        return '<span class="text-secondary small">Нет вложений</span>'; // Возвращаем плейсхолдер
-      } // Конец проверки
-      const badges = list.map((att) => buildAttachmentBadge(att, galleryKey, originLabel)).join(''); // Собираем бейджи
-      return `<div class="attachment-group">${badges}</div>`; // Возвращаем контейнер
-    } // Конец функции
-
-    function renderCopyHistory(copyHistory, galleryKey) { // Функция рендера репостов и пересланных сообщений
-      if (!Array.isArray(copyHistory) || !copyHistory.length) { // Проверяем наличие репостов
-        return ''; // Возвращаем пустую строку
-      } // Конец проверки
-      const blocks = copyHistory.map((entry) => { // Перебираем репосты
-        const source = entry.from_name || 'Репост без имени'; // Формируем подпись источника без ID
-        const text = entry.text ? entry.text.slice(0, 120) : 'Без текста'; // Формируем превью текста
-        const attachmentsBlock = renderAttachmentList(entry.attachments || [], galleryKey, source); // Рисуем вложения репоста
-        return `<div class="copy-block"><div class="copy-header">🔁 Репост от ${source}</div><div class="text-secondary small">${text}</div><div class="copy-attachments">${attachmentsBlock}</div></div>`; // Возвращаем блок репоста
-      }); // Конец цикла
-      return blocks.join(''); // Возвращаем объединенную строку
-    } // Конец функции
-
-    function buildAttachmentSummary(attachments, copyHistory, galleryKey) { // Формируем бейдж со скрепкой и количеством
-      const attachmentsCount = countAttachmentList(attachments); // Считаем вложения самого сообщения
-      const copyCount = countCopyHistoryAttachments(copyHistory); // Считаем вложения в репостах
-      const total = attachmentsCount + copyCount; // Подсчитываем итоговое количество
-      if (!total) { // Если вложений нет
-        return '<span class="text-secondary">—</span>'; // Возвращаем плейсхолдер
-      } // Конец проверки пустоты
-      const previewLink = findFirstAttachmentLink(attachments) || findFirstCopyHistoryLink(copyHistory); // Ищем ссылку первого вложения для открытия
-      const className = pickAttachmentClass(total === 1 ? (attachments?.[0]?.type || 'file') : 'file'); // Определяем класс бейджа
-      const label = `📎 ${total}`; // Формируем лаконичный текст бейджа со скрепкой и количеством
-      if (previewLink) { // Если удалось найти ссылку
-        return `<a class="attachment-pill ${className}" href="${previewLink}" data-gallery-key="${galleryKey}" data-gallery-url="${previewLink}" target="_blank" rel="noopener noreferrer">${label}</a>`; // Возвращаем кликабельный бейдж
-      } // Конец проверки ссылки
-      return `<span class="attachment-pill ${className}" data-gallery-key="${galleryKey}">${label}</span>`; // Возвращаем некликабельный бейдж
-    } // Конец функции формирования скрепки
-
-    function buildContentCell(attachments, copyHistory, galleryKey) { // Функция сборки ячейки контента
-      const hasAttachments = Array.isArray(attachments) && attachments.length > 0; // Проверяем наличие вложений
-      const hasCopy = Array.isArray(copyHistory) && copyHistory.length > 0; // Проверяем наличие репостов
-      if (!hasAttachments && !hasCopy) { // Если нет ни вложений, ни репостов
-        return '<span class="text-secondary">—</span>'; // Возвращаем плейсхолдер
-      } // Конец условия
-      const summary = buildAttachmentSummary(attachments, copyHistory, galleryKey); // Строим бейдж со скрепкой и количеством
-      const copyBlock = hasCopy ? renderCopyHistory(copyHistory, galleryKey) : ''; // Готовим блок репостов
-      return `<div class="content-cell">${summary}${copyBlock}</div>`; // Собираем итоговую ячейку
-    } // Конец функции
-
-    function renderGalleryStrip(galleryData) { // Рисуем полосу миниатюр
-      if (!galleryData || !Array.isArray(galleryData.items) || galleryData.items.length === 0) { // Проверяем входные данные
-        galleryStrip.innerHTML = '<span class="text-secondary small">Вложений нет</span>'; // Показываем плейсхолдер
-        return; // Выходим при отсутствии данных
-      } // Конец проверки
-      const buttons = galleryData.items.map((item, idx) => { // Формируем кнопки для каждого вложения
-        const typeLabel = attachmentTypeLabels[item.type] || 'Файл'; // Определяем подпись типа
-        const activeClass = idx === currentGalleryIndex ? 'active' : ''; // Определяем активный класс
-        return `<button type="button" class="btn btn-outline-light btn-sm gallery-thumb ${activeClass}" data-gallery-index="${idx}">${idx + 1}. ${typeLabel}</button>`; // Возвращаем кнопку
-      }); // Конец сборки кнопок
-      galleryStrip.innerHTML = buttons.join(''); // Рисуем полосу кнопок
-    } // Конец функции рендера полосы
-
-    function renderGallerySlide(galleryData, index) { // Рисуем текущий слайд галереи
-      if (!galleryData || !Array.isArray(galleryData.items) || !galleryData.items.length) { // Проверяем наличие данных
-        galleryMedia.innerHTML = '<div class="text-secondary">Вложений нет</div>'; // Показываем плейсхолдер
-        galleryCaption.textContent = '—'; // Сбрасываем подпись
-        galleryOrigin.textContent = 'Источник неизвестен'; // Сбрасываем источник
-        galleryLinks.innerHTML = '—'; // Сбрасываем ссылки
-        return; // Выходим
-      } // Конец проверки
-      const boundedIndex = Math.max(0, Math.min(index, galleryData.items.length - 1)); // Гарантируем допустимый индекс
-      currentGalleryIndex = boundedIndex; // Обновляем текущий индекс
-      const item = galleryData.items[boundedIndex]; // Берем выбранный элемент
-      const isVideo = isVideoType(item.type); // Проверяем, видео ли это
-      const mediaHtml = isVideo ? `<video controls src="${item.url}" class="w-100" preload="metadata"></video>` : `<img src="${item.url}" alt="Вложение" loading="lazy" />`; // Формируем HTML медиа
-      galleryMedia.innerHTML = mediaHtml; // Подставляем медиа в модалку
-      const caption = item.caption || 'Без описания'; // Подпись файла
-      const origin = item.origin || galleryData.meta.peer || 'Источник неизвестен'; // Источник файла
-      galleryCaption.textContent = caption; // Обновляем подпись файла
-      galleryOrigin.textContent = `${origin} • ${galleryData.meta.peer}`; // Обновляем источник с указанием чата
-      const openLink = `<a href="${item.url}" target="_blank" rel="noopener noreferrer">Открыть файл</a>`; // Ссылка на файл
-      galleryLinks.innerHTML = `${openLink} · ${galleryData.meta.author}`; // Добавляем ссылку и автора
-      renderGalleryStrip(galleryData); // Перерисовываем полосу миниатюр
-    } // Конец функции рендера слайда
-
-    function openGallery(key, targetUrl, targetOrigin) { // Открываем модалку галереи
-      const galleryData = galleryStore[key]; // Получаем данные галереи
-      if (!galleryData || !galleryData.items.length) { // Проверяем наличие контента
-        return; // Если данных нет, выходим
-      } // Конец проверки
-      currentGalleryKey = key; // Сохраняем активный ключ
-      let startIndex = 0; // Индекс по умолчанию
-      if (targetUrl) { // Если передана целевая ссылка
-        const foundIndex = galleryData.items.findIndex((item) => item.url === targetUrl && (!targetOrigin || item.origin === targetOrigin)); // Ищем совпадение
-        if (foundIndex >= 0) { // Если совпадение найдено
-          startIndex = foundIndex; // Начинаем с нужного элемента
-        } // Конец проверки совпадения
-      } // Конец проверки целевой ссылки
-      renderGallerySlide(galleryData, startIndex); // Рисуем выбранный слайд
-      galleryModal.style.display = 'flex'; // Показываем модалку
-    } // Конец функции открытия галереи
-
-    function closeGallery() { // Закрываем модалку галереи
-      galleryModal.style.display = 'none'; // Скрываем фон
-      currentGalleryKey = null; // Сбрасываем активный ключ
-      currentGalleryIndex = 0; // Сбрасываем индекс
-    } // Конец функции закрытия галереи
-
-    function stepGallery(delta) { // Переключаемся по списку галереи
-      if (!currentGalleryKey) { // Проверяем наличие активной галереи
-        return; // Выходим, если модалка закрыта
-      } // Конец проверки
-      const galleryData = galleryStore[currentGalleryKey]; // Получаем активную галерею
-      if (!galleryData || !galleryData.items.length) { // Проверяем наличие данных
-        return; // Выходим при отсутствии элементов
-      } // Конец проверки
-      const total = galleryData.items.length; // Количество элементов
-      const nextIndex = (currentGalleryIndex + delta + total) % total; // Вычисляем следующий индекс по кругу
-      renderGallerySlide(galleryData, nextIndex); // Обновляем отображение
-    } // Конец функции переключения
-
-    galleryClose.addEventListener('click', () => closeGallery()); // Закрываем галерею по кнопке
-    galleryPrev.addEventListener('click', () => stepGallery(-1)); // Переход к предыдущему вложению
-    galleryNext.addEventListener('click', () => stepGallery(1)); // Переход к следующему вложению
-    galleryStrip.addEventListener('click', (evt) => { // Обработчик клика по миниатюрам
-      const trigger = evt.target.closest('[data-gallery-index]'); // Ищем кнопку с индексом
-      if (!trigger || currentGalleryKey === null) { // Если не нашли или галерея не выбрана
-        return; // Выходим
-      } // Конец проверки
-      const targetIndex = Number(trigger.getAttribute('data-gallery-index')); // Читаем индекс
-      const galleryData = galleryStore[currentGalleryKey]; // Берем активную галерею
-      if (!galleryData || Number.isNaN(targetIndex)) { // Проверяем корректность данных
-        return; // Выходим при ошибке
-      } // Конец проверки
-      renderGallerySlide(galleryData, targetIndex); // Показываем выбранный элемент
-    }); // Конец обработчика клика по миниатюрам
-    galleryModal.addEventListener('click', (evt) => { // Подписка на клик по фону
-      if (evt.target === galleryModal) { // Проверяем, что кликнули по подложке
-        closeGallery(); // Закрываем модалку
-      } // Конец проверки цели клика
-    }); // Конец обработчика клика по фону
-    document.addEventListener('keydown', (evt) => { // Обработка клавиатуры
-      if (galleryModal.style.display === 'flex') { // Проверяем, открыта ли модалка
-        if (evt.key === 'Escape') { // Если нажали Esc
-          closeGallery(); // Закрываем галерею
-        } else if (evt.key === 'ArrowLeft') { // Если нажали стрелку влево
-          stepGallery(-1); // Переключаемся назад
-        } else if (evt.key === 'ArrowRight') { // Если нажали стрелку вправо
-          stepGallery(1); // Переключаемся вперед
-        } // Конец проверки клавиш
-      } // Конец проверки состояния модалки
-    }); // Конец обработчика клавиатуры
-
-    document.addEventListener('click', (evt) => { // Делегируем клики по бейджам вложений
-      const trigger = evt.target.closest('[data-gallery-key]'); // Ищем ближайший элемент с атрибутом
-      if (!trigger) { // Если клик не по бейджу
-        return; // Выходим
-      } // Конец проверки
-      evt.preventDefault(); // Отменяем переход по ссылке
-      const key = trigger.getAttribute('data-gallery-key'); // Читаем ключ галереи
-      const url = trigger.getAttribute('data-gallery-url'); // Читаем ссылку на вложение
-      const originLabel = trigger.getAttribute('data-gallery-origin'); // Читаем источник вложения
-      openGallery(key, url, originLabel); // Открываем модалку с нужным вложением
-    }); // Конец делегирования кликов
-
     function buildPeerCell(message) { // Функция подготовки подписи чата без ID
       const chatName = message.peer_title || 'Чат без названия'; // Определяем отображаемое имя чата
       if (message.peer_id) { // Если есть идентификатор чата
@@ -767,7 +366,9 @@
 
     function renderMessages(messages) { // Функция отрисовки сообщений
       messagesBody.innerHTML = ''; // Очищаем тело таблицы
-      resetGalleryStorePreserveActive(); // Сохраняем открытую галерею и очищаем остальное
+      if (galleryApi.resetGalleryStorePreserveActive) { // Проверяем наличие функции очистки галереи
+        galleryApi.resetGalleryStorePreserveActive(); // Сохраняем открытую галерею и очищаем остальное
+      } // Конец проверки наличия функции очистки
       galleryCounter = 0; // Обнуляем счетчик ключей
       const nextRenderedKeys = new Set(); // Готовим новое множество ключей для сохранения состояния
       if (!messages.length) { // Если пусто
@@ -790,10 +391,12 @@
           row.classList.add('message-row-new'); // Добавляем анимацию появления только для новых
         } // Конец проверки новизны
         const galleryKey = `msg-${msg.id ?? 'local'}-${galleryCounter++}`; // Формируем уникальный ключ для галереи
-        const normalizedAttachments = extractAttachments(msg); // Нормализуем вложения из сообщения или payload
-        const normalizedCopyHistory = extractCopyHistory(msg); // Нормализуем репосты из сообщения или payload
-        registerGallery({ ...msg, attachments: normalizedAttachments, copy_history: normalizedCopyHistory }, galleryKey); // Регистрируем вложения для модалки
-        const contentCell = buildContentCell(normalizedAttachments, normalizedCopyHistory, galleryKey); // Формируем ячейку контента
+        const normalizedAttachments = galleryApi.extractAttachments ? galleryApi.extractAttachments(msg) : []; // Нормализуем вложения через общий модуль
+        const normalizedCopyHistory = galleryApi.extractCopyHistory ? galleryApi.extractCopyHistory(msg) : []; // Нормализуем репосты через общий модуль
+        if (galleryApi.registerMessageGallery) { // Проверяем наличие функции регистрации галереи
+          galleryApi.registerMessageGallery({ ...msg, attachments: normalizedAttachments, copy_history: normalizedCopyHistory }, galleryKey); // Регистрируем вложения для модалки через общий модуль
+        } // Конец проверки функции регистрации
+        const contentCell = galleryApi.buildContentCell ? galleryApi.buildContentCell(normalizedAttachments, normalizedCopyHistory, galleryKey) : '<span class="text-secondary">—</span>'; // Формируем ячейку контента через общий модуль или плейсхолдер
         const peerCell = buildPeerCell(msg); // Готовим ячейку чата с аватаркой
         const authorCell = buildSenderCell(msg); // Готовим ячейку автора с отметкой бота
         const replyCell = buildReplyPreview(msg.reply); // Готовим ячейку превью исходного сообщения без ID

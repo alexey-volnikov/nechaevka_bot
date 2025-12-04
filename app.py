@@ -688,6 +688,12 @@ class BotMonitor:
     def _resolve_video_url(self, video_block: Dict) -> Optional[str]:
         if not isinstance(video_block, dict):  # Проверяем формат блока видео
             return None  # Возвращаем пустое значение при ошибке
+        files_block = video_block.get("files") if isinstance(video_block.get("files"), dict) else {}  # Забираем готовые ссылки mp4 из payload
+        if files_block:  # Проверяем, что блок файлов присутствует
+            candidates = [files_block.get(key) for key in sorted(files_block.keys()) if key.startswith("mp4") or key == "mp4"]  # Собираем ссылки mp4 прямо из сообщения
+            candidates = [url for url in candidates if isinstance(url, str)]  # Оставляем только строки URL
+            if candidates:  # Проверяем, что нашлись прямые ссылки
+                return candidates[-1]  # Возвращаем ссылку с максимальным качеством
         owner_id = video_block.get("owner_id")  # Получаем owner_id видео
         video_id = video_block.get("id")  # Получаем id видео
         access_key = video_block.get("access_key")  # Получаем access_key видео
@@ -791,11 +797,15 @@ class BotMonitor:
         normalized["local_path"] = None  # Подготавливаем поле для пути
         normalized["download_url"] = download_url  # Сохраняем URL в явном виде
         normalized["transcript"] = normalized.get("transcript")  # Резерв для будущей расшифровки аудио
+        normalized["download_state"] = "pending" if download_url else "missing"  # Помечаем статус скачивания по умолчанию
         if download_url:  # Если удалось получить ссылку
             target_path = self._build_local_path(peer_id, message_id, download_url, att_type or "file")  # Формируем путь сохранения
             saved_path = self._download_file(download_url, target_path)  # Пытаемся скачать файл
             if saved_path:  # Проверяем успешность сохранения
                 normalized["local_path"] = str(saved_path)  # Сохраняем путь к файлу
+                normalized["download_state"] = "ready"  # Отмечаем успешную загрузку вложения
+            else:  # Если скачать не удалось
+                normalized["download_state"] = "failed"  # Фиксируем неуспешное скачивание
         return normalized  # Возвращаем нормализованное вложение
 
     def _save_attachments(self, attachments: List[Dict], peer_id: Optional[int], message_id: Optional[int]) -> List[Dict]:
