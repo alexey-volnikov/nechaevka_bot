@@ -749,10 +749,12 @@ class BotMonitor:
             player_link = items[0].get("player") if isinstance(items[0], dict) else None  # Достаём ссылку на плеер из первого элемента
             if isinstance(player_link, str) and player_link:  # Проверяем, что ссылка корректна
                 return player_link  # Возвращаем найденную ссылку на плеер
-            return None  # Возвращаем пустое значение, если player не найден
         except Exception as exc:  # Обрабатываем любые исключения от VK API
             logger.debug("Не удалось запросить ссылку плеера: %s", exc)  # Пишем отладочное сообщение о неудаче
-            return None  # Возвращаем пустой результат при ошибке
+        page_link = f"https://vk.com/video{owner_id}_{video_id}"  # Собираем ссылку на страницу видео по owner_id и id
+        if access_key:  # Проверяем, что есть access_key для приватных роликов
+            page_link += f"?access_key={access_key}"  # Добавляем access_key в строку запроса
+        return page_link  # Возвращаем хотя бы ссылку на страницу видео, даже если плеер не вернулся из API
 
     def _pick_attachment_url(self, attachment: Dict) -> Optional[str]:
         if not isinstance(attachment, dict):  # Проверяем формат вложения
@@ -845,6 +847,7 @@ class BotMonitor:
             return None, "Нет ссылки на плеер VK для скачивания"  # Возвращаем причину отсутствия ссылки
         if ytdlp is None:  # Проверяем, доступна ли библиотека yt-dlp
             return None, "yt-dlp не установлен: добавьте зависимость для скачивания через плеер"  # Сообщаем, что нужен пакет
+        download_error_cls = getattr(getattr(ytdlp, "utils", None), "DownloadError", None)  # Достаём класс ошибки yt-dlp, если он есть
         safe_base = target_path.with_suffix("")  # Убираем расширение, чтобы yt-dlp добавил своё
         out_template = f"{safe_base}.%(ext)s"  # Формируем шаблон имени файла для yt-dlp
         ydl_options = {"outtmpl": out_template, "quiet": True, "no_warnings": True}  # Настраиваем yt-dlp без лишнего вывода
@@ -859,6 +862,16 @@ class BotMonitor:
                 return downloaded_path, None  # Возвращаем путь и отсутствие ошибки
             return None, "yt-dlp не сохранил файл по ссылке плеера"  # Сообщаем об отсутствии результата
         except Exception as exc:  # Обрабатываем любые сбои yt-dlp
+            if download_error_cls and isinstance(exc, download_error_cls):  # Проверяем, что поймали специфичную ошибку yt-dlp
+                error_text = str(exc)  # Извлекаем текст ошибки
+                if "Access restricted" in error_text:  # Ищем признак ограниченного доступа к ролику
+                    friendly_message = (
+                        "Доступ к видео ограничен владельцем: нужен access_key или авторизация, "
+                        "иначе лонгпулл не отдаёт mp4 и плеер нельзя скачать"
+                    )  # Готовим понятное сообщение пользователю с пояснением про ограничения лонгпулла
+                    logger.warning("Видео недоступно для скачивания: %s", friendly_message)  # Логируем предупреждение
+                    log_service_event(403, f"yt-dlp отказано в доступе для {player_url}: {error_text}")  # Пишем сервисное событие с кодом 403
+                    return None, friendly_message  # Возвращаем понятную причину
             error_message = f"yt-dlp: {exc}"  # Формируем человекочитаемое сообщение
             logger.warning("Не удалось скачать видео через плеер %s: %s", player_url, error_message)  # Пишем предупреждение в лог
             log_service_event(500, f"Ошибка yt-dlp при скачивании {player_url}: {exc}")  # Дублируем ошибку в сервисные логи
