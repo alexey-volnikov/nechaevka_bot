@@ -791,8 +791,8 @@
         renderedMessageKeys = nextRenderedKeys; // Сбрасываем множество ключей при отсутствии сообщений
         return; // Выходим
       } // Конец проверки пустоты
-      const sortedMessages = [...messages].reverse(); // Копируем массив, чтобы выводить новые записи сверху
-      sortedMessages.forEach((msg) => { // Перебираем сообщения от новых к старым
+      const sortedMessages = [...messages]; // Копируем массив в порядке, где сервер уже отдает новые записи первыми
+      sortedMessages.forEach((msg) => { // Перебираем сообщения от новых к старым без инверсии порядка
         const messageKeyParts = [ // Готовим части ключа сообщения
           msg.id ?? 'unknown', // Добавляем основной ID, если есть
           msg.peer_id ?? 'no-peer', // Добавляем идентификатор чата
