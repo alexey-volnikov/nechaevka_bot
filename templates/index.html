@@ -611,7 +611,7 @@
       } // Конец проверки пустоты
       const previewLink = findFirstAttachmentLink(attachments) || findFirstCopyHistoryLink(copyHistory); // Ищем ссылку первого вложения для открытия
       const className = pickAttachmentClass(total === 1 ? (attachments?.[0]?.type || 'file') : 'file'); // Определяем класс бейджа
-      const label = `📎 Скрепка (${total})`; // Формируем текст бейджа
+      const label = `📎 ${total}`; // Формируем лаконичный текст бейджа со скрепкой и количеством
       if (previewLink) { // Если удалось найти ссылку
         return `<a class="attachment-pill ${className}" href="${previewLink}" data-gallery-key="${galleryKey}" data-gallery-url="${previewLink}" target="_blank" rel="noopener noreferrer">${label}</a>`; // Возвращаем кликабельный бейдж
       } // Конец проверки ссылки
