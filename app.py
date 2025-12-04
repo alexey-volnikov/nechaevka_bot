@@ -688,6 +688,12 @@ class BotMonitor:
     def _resolve_video_url(self, video_block: Dict) -> Optional[str]:
         if not isinstance(video_block, dict):  # Проверяем формат блока видео
             return None  # Возвращаем пустое значение при ошибке
+        files_block = video_block.get("files") if isinstance(video_block.get("files"), dict) else {}  # Забираем готовые ссылки mp4 из payload
+        if files_block:  # Проверяем, что блок файлов присутствует
+            candidates = [files_block.get(key) for key in sorted(files_block.keys()) if key.startswith("mp4") or key == "mp4"]  # Собираем ссылки mp4 прямо из сообщения
+            candidates = [url for url in candidates if isinstance(url, str)]  # Оставляем только строки URL
+            if candidates:  # Проверяем, что нашлись прямые ссылки
+                return candidates[-1]  # Возвращаем ссылку с максимальным качеством
         owner_id = video_block.get("owner_id")  # Получаем owner_id видео
         video_id = video_block.get("id")  # Получаем id видео
         access_key = video_block.get("access_key")  # Получаем access_key видео
