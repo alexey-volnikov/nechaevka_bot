@@ -1,0 +1,177 @@
+<!doctype html> <!-- Объявляем тип документа -->
+<html lang="ru"> <!-- Устанавливаем язык страницы -->
+<head> <!-- Начало шапки -->
+  <meta charset="UTF-8" /> <!-- Кодировка -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" /> <!-- Адаптивность -->
+  <title>Профиль {{ 'чата' if entity_type == 'chat' else 'пользователя' }}</title> <!-- Заголовок вкладки -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" /> <!-- Bootstrap -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" /> <!-- Предзагрузка шрифтов -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /> <!-- Кросс-домен для шрифтов -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" /> <!-- Шрифт Inter -->
+  <style> /* Начало пользовательских стилей */
+    body { background: #0f172a; color: #e2e8f0; font-family: "Inter", system-ui, -apple-system, sans-serif; } /* Фон и текст */
+    .glass { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 18px; backdrop-filter: blur(10px); } /* Стеклянный стиль */
+    .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
+    .badge-soft { background: rgba(99, 102, 241, 0.15); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.35); } /* Мягкий бейдж */
+    .avatar-lg { width: 64px; height: 64px; border-radius: 16px; object-fit: cover; } /* Крупный аватар */
+    .avatar-inline { width: 1.6em; height: 1.6em; border-radius: 999px; object-fit: cover; flex-shrink: 0; } /* Компактный аватар */
+    .stat-card { min-height: 140px; } /* Минимальная высота карточки статистики */
+    .attachment-pill { display: inline-flex; gap: 6px; align-items: center; padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.05); color: #e2e8f0; font-size: 12px; text-decoration: none; } /* Пилюля вложения */
+    .attachment-pill:hover { text-decoration: none; background: rgba(255, 255, 255, 0.08); } /* Подсветка вложения */
+    .attachment-photo { border-color: rgba(59, 130, 246, 0.5); color: #bfdbfe; } /* Цвет фото */
+    .attachment-video { border-color: rgba(244, 114, 182, 0.5); color: #fbcfe8; } /* Цвет видео */
+    .attachment-doc { border-color: rgba(74, 222, 128, 0.5); color: #bbf7d0; } /* Цвет документа */
+    .attachment-link { border-color: rgba(14, 165, 233, 0.5); color: #bae6fd; } /* Цвет ссылки */
+    .attachment-audio { border-color: rgba(56, 189, 248, 0.5); color: #bae6fd; } /* Цвет аудио */
+    .attachment-sticker { border-color: rgba(248, 180, 0, 0.6); color: #fef08a; } /* Цвет стикера */
+    .attachment-generic { border-color: rgba(148, 163, 184, 0.5); color: #e2e8f0; } /* Цвет прочего */
+    .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачные ячейки */
+    .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатость */
+    .text-secondary-small { color: #94a3b8; font-size: 13px; } /* Серый мелкий текст */
+  </style> <!-- Конец пользовательских стилей -->
+</head> <!-- Конец шапки -->
+<body class="pb-5"> <!-- Тело страницы -->
+  <div class="container py-4"> <!-- Контейнер -->
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4 glass shadow-soft p-4"> <!-- Шапка профиля -->
+      <div class="d-flex align-items-center gap-3"> <!-- Левая часть с аватаром -->
+        {% if payload.summary.peer_avatar or payload.summary.from_avatar %} <!-- Проверяем наличие аватара -->
+        <img src="{{ payload.summary.peer_avatar or payload.summary.from_avatar }}" alt="Аватар" class="avatar-lg" /> <!-- Показываем аватар -->
+        {% else %} <!-- Ветка без аватара -->
+        <div class="avatar-lg d-flex align-items-center justify-content-center bg-dark text-secondary">—</div> <!-- Плейсхолдер -->
+        {% endif %} <!-- Конец проверки аватара -->
+        <div> <!-- Блок заголовка -->
+          <div class="d-inline-flex align-items-center gap-2 mb-2"> <!-- Строка бейджей -->
+            <span class="badge-soft badge rounded-pill"> <!-- Бейдж типа сущности -->
+              {{ 'Профиль чата' if entity_type == 'chat' else 'Профиль пользователя' }} <!-- Подпись бейджа -->
+            </span> <!-- Конец бейджа -->
+            {% if demo_mode %} <!-- Если демо-режим -->
+            <span class="badge bg-warning text-dark">Демо</span> <!-- Бейдж демо -->
+            {% endif %} <!-- Конец проверки демо -->
+          </div> <!-- Конец строки бейджей -->
+          <h1 class="fw-bold mb-1">{{ payload.summary.peer_title or payload.summary.from_name }}</h1> <!-- Заголовок с именем -->
+          <p class="text-secondary mb-0">ID: {{ payload.summary.peer_id or payload.summary.from_id }} • Лимит записей: {{ limit }}</p> <!-- Подпись с ID и лимитом -->
+        </div> <!-- Конец блока заголовка -->
+      </div> <!-- Конец левой части -->
+      <div class="d-flex flex-wrap gap-2"> <!-- Правая часть с кнопками -->
+        <a href="/" class="btn btn-outline-light">Вернуться к дашборду</a> <!-- Кнопка назад -->
+        <a href="/logs/full" class="btn btn-outline-light">К логам</a> <!-- Кнопка логов -->
+      </div> <!-- Конец правой части -->
+    </div> <!-- Конец шапки -->
+
+    <div class="row g-3 mb-4"> <!-- Строка статистики -->
+      <div class="col-12 col-md-4"> <!-- Первая карточка -->
+        <div class="glass shadow-soft p-3 stat-card"> <!-- Карточка -->
+          <div class="text-secondary-small">Всего сообщений</div> <!-- Подпись -->
+          <div class="h3 fw-bold mb-1">{{ payload.summary.total_messages }}</div> <!-- Значение -->
+          <div class="text-secondary small">Все записи, найденные в базе</div> <!-- Подпись уточнения -->
+        </div> <!-- Конец карточки -->
+      </div> <!-- Конец колонки -->
+      <div class="col-12 col-md-4"> <!-- Вторая карточка -->
+        <div class="glass shadow-soft p-3 stat-card"> <!-- Карточка -->
+          <div class="text-secondary-small">{{ 'Уникальных отправителей' if entity_type == 'chat' else 'Уникальных чатов' }}</div> <!-- Подпись -->
+          <div class="h3 fw-bold mb-1">{{ payload.summary.unique_senders if entity_type == 'chat' else payload.summary.unique_peers }}</div> <!-- Значение -->
+          <div class="text-secondary small">Считаем только события типа message</div> <!-- Подпись уточнения -->
+        </div> <!-- Конец карточки -->
+      </div> <!-- Конец колонки -->
+      <div class="col-12 col-md-4"> <!-- Третья карточка -->
+        <div class="glass shadow-soft p-3 stat-card"> <!-- Карточка -->
+          <div class="text-secondary-small">Последнее сообщение</div> <!-- Подпись -->
+          <div class="h3 fw-bold mb-1" data-time>{{ payload.summary.last_message_time or '—' }}</div> <!-- Значение времени -->
+          <div class="text-secondary small">Локальное время браузера</div> <!-- Подпись уточнения -->
+        </div> <!-- Конец карточки -->
+      </div> <!-- Конец колонки -->
+    </div> <!-- Конец строки статистики -->
+
+    <div class="glass shadow-soft p-4"> <!-- Блок таблицы сообщений -->
+      <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2"> <!-- Заголовок блока -->
+        <div> <!-- Левая часть -->
+          <div class="card-title mb-1">Сообщения</div> <!-- Заголовок -->
+          <div class="text-secondary small">Свежие записи выводятся первыми</div> <!-- Подпись -->
+        </div> <!-- Конец левой части -->
+        <div class="d-flex align-items-center gap-2"> <!-- Правая часть -->
+          <span class="badge-soft badge rounded-pill">READ ONLY</span> <!-- Бейдж режима -->
+          <span class="badge-soft badge rounded-pill">Локальное время</span> <!-- Бейдж таймзоны -->
+        </div> <!-- Конец правой части -->
+      </div> <!-- Конец заголовка -->
+      <div class="table-responsive"> <!-- Обертка таблицы -->
+        <table class="table table-striped align-middle mb-0"> <!-- Таблица -->
+          <thead class="text-secondary"> <!-- Заголовок таблицы -->
+            <tr> <!-- Строка заголовков -->
+              <th>Время</th> <!-- Колонка времени -->
+              <th>Чат</th> <!-- Колонка чата -->
+              <th>Отправитель</th> <!-- Колонка автора -->
+              <th>Вложения</th> <!-- Колонка вложений -->
+              <th>Текст</th> <!-- Колонка текста -->
+            </tr> <!-- Конец строки заголовков -->
+          </thead> <!-- Конец заголовка -->
+          <tbody> <!-- Тело таблицы -->
+            {% if not payload.messages %} <!-- Если нет данных -->
+            <tr> <!-- Плейсхолдер -->
+              <td colspan="5" class="text-secondary">Нет данных</td> <!-- Текст плейсхолдера -->
+            </tr> <!-- Конец плейсхолдера -->
+            {% else %} <!-- Ветка с данными -->
+              {% for message in payload.messages %} <!-- Перебираем сообщения -->
+              <tr> <!-- Строка сообщения -->
+                <td data-time>{{ message.created_at or '—' }}</td> <!-- Ячейка времени -->
+                <td> <!-- Ячейка чата -->
+                  {% if message.peer_id %} <!-- Если есть peer_id -->
+                  <a href="/chat/{{ message.peer_id }}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2"> <!-- Ссылка на чат -->
+                    {% if message.peer_avatar %} <!-- Если есть аватар -->
+                    <img src="{{ message.peer_avatar }}" alt="Аватар" class="avatar-inline" /> <!-- Аватар чата -->
+                    {% endif %} <!-- Конец проверки аватара -->
+                    <span>{{ message.peer_title or 'Чат без названия' }}</span> <!-- Название чата -->
+                  </a> <!-- Конец ссылки -->
+                  {% else %} <!-- Ветка без peer_id -->
+                  <span class="text-secondary">—</span> <!-- Плейсхолдер -->
+                  {% endif %} <!-- Конец проверки peer_id -->
+                </td> <!-- Конец ячейки чата -->
+                <td> <!-- Ячейка отправителя -->
+                  {% if message.from_id %} <!-- Проверяем наличие отправителя -->
+                  <a href="/user/{{ message.from_id }}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2 flex-wrap"> <!-- Ссылка на пользователя -->
+                    {% if message.from_avatar %} <!-- Если есть аватар -->
+                    <img src="{{ message.from_avatar }}" alt="Аватар" class="avatar-inline" /> <!-- Аватар -->
+                    {% endif %} <!-- Конец проверки аватара -->
+                    <span>{{ message.from_name or 'Неизвестный отправитель' }}</span> <!-- Имя -->
+                    {% if message.is_bot %} <!-- Если это бот -->
+                    <span class="badge bg-info text-dark">Бот</span> <!-- Плашка бота -->
+                    {% endif %} <!-- Конец проверки бота -->
+                  </a> <!-- Конец ссылки -->
+                  {% else %} <!-- Ветка без from_id -->
+                  <span class="text-secondary">—</span> <!-- Плейсхолдер -->
+                  {% endif %} <!-- Конец проверки отправителя -->
+                </td> <!-- Конец ячейки отправителя -->
+                <td> <!-- Ячейка вложений -->
+                  {% if message.attachments %} <!-- Если есть вложения -->
+                  <div class="d-flex flex-wrap gap-1"> <!-- Группа вложений -->
+                    {% for att in message.attachments %} <!-- Перебираем вложения -->
+                    {% set att_type = att.type or 'generic' %} <!-- Определяем тип -->
+                    <a href="{{ att.public_url or att.url }}" target="_blank" class="attachment-pill {{ 'attachment-photo' if att_type == 'photo' else 'attachment-video' if att_type == 'video' else 'attachment-doc' if att_type == 'doc' else 'attachment-link' if att_type == 'link' else 'attachment-audio' if att_type in ['audio', 'audio_message'] else 'attachment-sticker' if att_type == 'sticker' else 'attachment-generic' }}"> <!-- Пилюля -->
+                      <span>{{ att_type }}</span> <!-- Подпись типа -->
+                    </a> <!-- Конец ссылки -->
+                    {% endfor %} <!-- Конец цикла вложений -->
+                  </div> <!-- Конец группы вложений -->
+                  {% else %} <!-- Ветка без вложений -->
+                  <span class="text-secondary">—</span> <!-- Плейсхолдер -->
+                  {% endif %} <!-- Конец проверки вложений -->
+                </td> <!-- Конец ячейки вложений -->
+                <td>{{ message.text or '—' }}</td> <!-- Ячейка текста -->
+              </tr> <!-- Конец строки сообщения -->
+              {% endfor %} <!-- Конец цикла сообщений -->
+            {% endif %} <!-- Конец проверки наличия данных -->
+          </tbody> <!-- Конец тела таблицы -->
+        </table> <!-- Конец таблицы -->
+      </div> <!-- Конец обертки таблицы -->
+    </div> <!-- Конец блока таблицы -->
+  </div> <!-- Конец контейнера -->
+
+  <script> // Начало скрипта форматирования времени
+    const timeCells = document.querySelectorAll('[data-time]'); // Находим все элементы с датами
+    const formatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }); // Настраиваем формат локального времени
+    timeCells.forEach((cell) => { // Перебираем все элементы
+      const iso = cell.textContent.trim(); // Берем исходную строку
+      const parsed = iso ? new Date(iso) : null; // Парсим дату
+      cell.textContent = parsed && !Number.isNaN(parsed.valueOf()) ? formatter.format(parsed) : '—'; // Подставляем форматированное значение
+    }); // Конец цикла
+  </script> <!-- Конец скрипта -->
+</body> <!-- Конец тела -->
+</html> <!-- Конец документа -->

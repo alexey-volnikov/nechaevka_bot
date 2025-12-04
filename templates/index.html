@@ -23,6 +23,12 @@
     .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
     .chart-card { min-height: 320px; } /* Минимальная высота графика для компактности */
     .avatar-inline { width: 1.6em; height: 1.6em; border-radius: 999px; object-fit: cover; flex-shrink: 0; } /* Класс для маленьких аватарок по размеру текста */
+    .sender-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(94, 234, 212, 0.3); background: rgba(94, 234, 212, 0.12); color: #99f6e4; font-size: 12px; } /* Плашка для отметки бота рядом с отправителем */
+    .message-row-new { animation: floatDown 0.5s ease; } /* Анимация появления новых сообщений сверху */
+    @keyframes floatDown { /* Описание ключевых кадров анимации всплытия */
+      from { opacity: 0; transform: translateY(-6px); } /* Начало: прозрачность и легкий подъем */
+      to { opacity: 1; transform: translateY(0); } /* Конец: видимое состояние без сдвига */
+    } /* Конец анимации */
     .attachment-pill { display: inline-flex; gap: 6px; align-items: center; padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.05); color: #e2e8f0; font-size: 12px; text-decoration: none; } /* Пилюля для вложения */
     .attachment-pill:hover { text-decoration: none; background: rgba(255, 255, 255, 0.08); } /* Подсветка при наведении */
     .attachment-photo { border-color: rgba(59, 130, 246, 0.5); color: #bfdbfe; } /* Цвет для фото */
@@ -214,8 +220,7 @@
               <thead class="text-secondary"> <!-- Заголовок таблицы -->
                 <tr> <!-- Строка заголовка -->
                   <th>Чат</th> <!-- Заголовок столбца -->
-                  <th>Отправитель</th> <!-- Заголовок столбца -->
-                  <th>Бот?</th> <!-- Заголовок столбца для отметки бота -->
+                  <th>Отправитель</th> <!-- Заголовок столбца с автором и пометкой бота -->
                   <th>Ответ</th> <!-- Заголовок столбца -->
                   <th>Вложения</th> <!-- Заголовок столбца -->
                   <th>Текст</th> <!-- Заголовок столбца -->
@@ -223,7 +228,7 @@
               </thead> <!-- Конец заголовка таблицы -->
               <tbody id="messages-body"> <!-- Тело таблицы -->
                 <tr> <!-- Строка-заглушка -->
-                  <td colspan="6" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
+                  <td colspan="5" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
                 </tr> <!-- Конец строки-заглушки -->
               </tbody> <!-- Конец тела таблицы -->
             </table> <!-- Конец таблицы -->
@@ -374,18 +379,14 @@
       return safeLabel; // Если аватар отсутствует, возвращаем только текст
     } // Конец функции построения подписи
 
-    function buildReplyPreview(reply, peerId) { // Функция сборки ячейки ответа
-      if (!reply || (!reply.id && !reply.text && !reply.from_id)) { // Проверяем наличие полезных данных
+    function buildReplyPreview(reply) { // Функция сборки ячейки ответа без технических ID
+      if (!reply || (!reply.text && !reply.from_name)) { // Проверяем наличие человекочитаемых данных
         return '<span class="text-secondary">—</span>'; // Возвращаем плейсхолдер при отсутствии ответа
       } // Конец проверки наличия ответа
-      const replyId = reply.id ?? '—'; // Определяем ID исходного сообщения
-      const replyText = reply.text ? reply.text.slice(0, 120) : 'Без текста'; // Готовим превью текста
-      const replyAuthorLabel = reply.from_name ? `${reply.from_name} (ID: ${reply.from_id ?? '—'})` : reply.from_id ? `ID: ${reply.from_id}` : 'Автор неизвестен'; // Формируем подпись автора ответа
-      const replyAuthorCell = buildAvatarLabel(replyAuthorLabel, reply.from_avatar); // Готовим подпись автора с аватаркой
-      const replyLink = reply.id && peerId ? `<a href="https://vk.com/im?sel=${peerId}&msgid=${reply.id}" target="_blank" rel="noopener noreferrer">#${reply.id}</a>` : `#${replyId}`; // Собираем ссылку на исходное сообщение
-      const replyAttachmentsCount = Array.isArray(reply.attachments) ? reply.attachments.length : 0; // Считаем вложения исходного сообщения
-      const replyAttachmentsLabel = replyAttachmentsCount ? `${replyAttachmentsCount} влож.` : 'Без вложений'; // Формируем подпись вложений
-      return `<div class="d-flex flex-column gap-1"><div class="d-flex align-items-center gap-2">${replyLink}<span class="text-secondary small">${replyAttachmentsLabel}</span></div><div class="text-secondary small">${replyText}</div><div class="text-secondary small">${replyAuthorCell}</div></div>`; // Возвращаем HTML ячейки
+      const replyText = reply.text ? reply.text.slice(0, 120) : 'Без текста'; // Готовим превью текста без номеров
+      const replyAuthorName = reply.from_name || 'Автор не указан'; // Определяем имя автора ответа
+      const replyBotBadge = reply.is_bot ? '<span class="sender-badge">Бот</span>' : ''; // Строим плашку бота, если это бот
+      return `<div class="d-flex flex-column gap-1"><div class="text-secondary small">Ответ на предыдущее сообщение</div><div class="text-light small">${replyText}</div><div class="d-flex align-items-center gap-2 text-secondary small">${replyAuthorName}${replyBotBadge}</div></div>`; // Возвращаем компактный блок с текстом и автором
     } // Конец функции сборки ответа
 
     const attachmentTypeLabels = { photo: 'Фото', video: 'Видео', doc: 'Документ', audio_message: 'Голос', audio: 'Аудио', link: 'Ссылка', sticker: 'Стикер', wall: 'Пост', wall_reply: 'Комментарий', market: 'Товар', gift: 'Подарок', story: 'История', graffiti: 'Граффити', podcast: 'Подкаст', share: 'Репост', file: 'Файл' }; // Человекочитаемые подписи типов вложений
@@ -563,8 +564,8 @@
       } // Конец проверки ключа
       const bucket = []; // Готовим список собранных вложений
       const seen = new Set(); // Готовим набор сигнатур для устранения дублей
-      const authorLabel = message.from_name ? `${message.from_name} (ID: ${message.from_id ?? '—'})` : `ID: ${message.from_id ?? '—'}`; // Формируем подпись автора
-      const peerLabel = message.peer_title ? `${message.peer_title} (ID: ${message.peer_id ?? '—'})` : `ID: ${message.peer_id ?? '—'}`; // Формируем подпись чата
+      const authorLabel = message.from_name || 'Неизвестный отправитель'; // Формируем подпись автора без технических ID
+      const peerLabel = message.peer_title || 'Чат без названия'; // Формируем подпись чата без упоминания ID
       const meta = { // Готовим описание для подвала галереи
         author: authorLabel, // Автор сообщения
         peer: peerLabel, // Чат, где опубликовано
@@ -615,7 +616,7 @@
         return ''; // Возвращаем пустую строку
       } // Конец проверки
       const blocks = copyHistory.map((entry) => { // Перебираем репосты
-        const source = entry.from_name ? `${entry.from_name} (ID: ${entry.from_id ?? '—'})` : `ID: ${entry.from_id ?? '—'}`; // Формируем подпись источника
+        const source = entry.from_name || 'Репост без имени'; // Формируем подпись источника без ID
         const text = entry.text ? entry.text.slice(0, 120) : 'Без текста'; // Формируем превью текста
         const attachmentsBlock = renderAttachmentList(entry.attachments || [], galleryKey, source); // Рисуем вложения репоста
         return `<div class="copy-block"><div class="copy-header">🔁 Репост от ${source}</div><div class="text-secondary small">${text}</div><div class="copy-attachments">${attachmentsBlock}</div></div>`; // Возвращаем блок репоста
@@ -766,30 +767,62 @@
       openGallery(key, url, originLabel); // Открываем модалку с нужным вложением
     }); // Конец делегирования кликов
 
+    function buildPeerCell(message) { // Функция подготовки подписи чата без ID
+      const chatName = message.peer_title || 'Чат без названия'; // Определяем отображаемое имя чата
+      if (message.peer_id) { // Если есть идентификатор чата
+        return `<a href="/chat/${message.peer_id}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2">${buildAvatarLabel(chatName, message.peer_avatar)}</a>`; // Возвращаем подпись как ссылку на профиль чата
+      } // Конец проверки наличия ID
+      return buildAvatarLabel(chatName, message.peer_avatar); // Возвращаем подпись с аватаркой без ссылки
+    } // Конец функции подготовки чата
+
+    function buildSenderCell(message) { // Функция подготовки подписи отправителя с отметкой бота
+      const senderName = message.from_name || 'Неизвестный отправитель'; // Определяем имя отправителя
+      const senderLabel = buildAvatarLabel(senderName, message.from_avatar); // Формируем подпись с аватаркой
+      const botBadge = message.is_bot ? '<span class="sender-badge">Бот</span>' : ''; // Готовим плашку для бота
+      if (message.from_id) { // Если указан отправитель
+        return `<div class="d-flex align-items-center gap-2 flex-wrap"><a href="/user/${message.from_id}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2">${senderLabel}</a>${botBadge}</div>`; // Собираем HTML с ссылкой на профиль пользователя
+      } // Конец проверки наличия отправителя
+      return `<div class="d-flex align-items-center gap-2 flex-wrap">${senderLabel}${botBadge}</div>`; // Собираем итоговый HTML без ссылки
+    } // Конец функции подготовки отправителя
+
+    let renderedMessageKeys = new Set(); // Хранилище ключей уже отрисованных сообщений
+
     function renderMessages(messages) { // Функция отрисовки сообщений
       messagesBody.innerHTML = ''; // Очищаем тело таблицы
       resetGalleryStorePreserveActive(); // Сохраняем открытую галерею и очищаем остальное
       galleryCounter = 0; // Обнуляем счетчик ключей
+      const nextRenderedKeys = new Set(); // Готовим новое множество ключей для сохранения состояния
       if (!messages.length) { // Если пусто
-        messagesBody.innerHTML = '<tr><td colspan="6" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
+        messagesBody.innerHTML = '<tr><td colspan="5" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
+        renderedMessageKeys = nextRenderedKeys; // Сбрасываем множество ключей при отсутствии сообщений
         return; // Выходим
       } // Конец проверки пустоты
-      messages.forEach((msg) => { // Перебираем сообщения по порядку от новых к старым
+      const sortedMessages = [...messages]; // Копируем массив в порядке, где сервер уже отдает новые записи первыми
+      sortedMessages.forEach((msg) => { // Перебираем сообщения от новых к старым без инверсии порядка
+        const messageKeyParts = [ // Готовим части ключа сообщения
+          msg.id ?? 'unknown', // Добавляем основной ID, если есть
+          msg.peer_id ?? 'no-peer', // Добавляем идентификатор чата
+          msg.date ?? msg.timestamp ?? 'no-time', // Добавляем время, если доступно
+          msg.text || '', // Добавляем текст для уникальности без вложений
+        ]; // Завершаем сборку частей ключа
+        const messageKey = messageKeyParts.join('::'); // Склеиваем части ключа в строку
+        nextRenderedKeys.add(messageKey); // Сохраняем ключ в новое множество для будущих сравнений
         const row = document.createElement('tr'); // Создаем строку
+        if (!renderedMessageKeys.has(messageKey)) { // Проверяем, новое ли сообщение
+          row.classList.add('message-row-new'); // Добавляем анимацию появления только для новых
+        } // Конец проверки новизны
         const galleryKey = `msg-${msg.id ?? 'local'}-${galleryCounter++}`; // Формируем уникальный ключ для галереи
         const normalizedAttachments = extractAttachments(msg); // Нормализуем вложения из сообщения или payload
         const normalizedCopyHistory = extractCopyHistory(msg); // Нормализуем репосты из сообщения или payload
         registerGallery({ ...msg, attachments: normalizedAttachments, copy_history: normalizedCopyHistory }, galleryKey); // Регистрируем вложения для модалки
         const contentCell = buildContentCell(normalizedAttachments, normalizedCopyHistory, galleryKey); // Формируем ячейку контента
-        const botBadge = msg.is_bot ? 'Да' : 'Нет'; // Определяем, является ли автор ботом
-        const peerLabel = msg.peer_title ? `${msg.peer_title} (ID: ${msg.peer_id ?? '—'})` : `${msg.peer_id ?? '—'}`; // Формируем подпись чата
-        const authorLabel = msg.from_name ? `${msg.from_name} (ID: ${msg.from_id ?? '—'})` : `${msg.from_id ?? '—'}`; // Формируем подпись автора
-        const peerCell = buildAvatarLabel(peerLabel, msg.peer_avatar); // Готовим ячейку чата с аватаркой
-        const authorCell = buildAvatarLabel(authorLabel, msg.from_avatar); // Готовим ячейку автора с аватаркой
-        const replyCell = buildReplyPreview(msg.reply, msg.peer_id); // Готовим ячейку превью исходного сообщения
-        row.innerHTML = `<td>${peerCell}</td><td>${authorCell}</td><td>${botBadge}</td><td>${replyCell}</td><td>${contentCell}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки
+        const peerCell = buildPeerCell(msg); // Готовим ячейку чата с аватаркой
+        const authorCell = buildSenderCell(msg); // Готовим ячейку автора с отметкой бота
+        const replyCell = buildReplyPreview(msg.reply); // Готовим ячейку превью исходного сообщения без ID
+        row.innerHTML = `<td>${peerCell}</td><td>${authorCell}</td><td>${replyCell}</td><td>${contentCell}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки без технических данных
         messagesBody.appendChild(row); // Добавляем строку в таблицу
       }); // Конец цикла
+      renderedMessageKeys = nextRenderedKeys; // Обновляем сохраненное множество после перерисовки
     } // Конец функции
 
     function renderPeers(peers) { // Функция отрисовки списка чатов
@@ -840,7 +873,7 @@
         const localizedType = translatedTypes[type] || translatedTypes.unknown; // Переводим тип на русский
         const messagesCount = Number(conv.messages_count ?? 0); // Нормализуем количество сообщений
         const avatarUrl = conv.chat_settings?.photo?.photo_50 || conv.chat_settings?.photo?.photo_100 || conv.peer?.avatar; // Определяем ссылку на аватар беседы
-        const titleCell = buildAvatarLabel(title, avatarUrl); // Формируем подпись с аватаркой
+        const titleCell = peer.id ? `<a href="/chat/${peer.id}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2">${buildAvatarLabel(title, avatarUrl)}</a>` : buildAvatarLabel(title, avatarUrl); // Формируем подпись с аватаркой и ссылкой
         const row = document.createElement('tr'); // Создаем строку
         row.innerHTML = `<td>${peer.id ?? '—'}</td><td>${localizedType}</td><td>${titleCell}</td><td>${messagesCount}</td>`; // Заполняем строку
         conversationsBody.appendChild(row); // Добавляем строку
