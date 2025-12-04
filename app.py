@@ -74,12 +74,13 @@ def build_service_logger() -> logging.Logger:  # Конструирует сер
     return service_logger  # Возвращаем готовый логгер
 
 
-def log_service_event(status_code: int, message: str) -> None:  # Упрощенный вызов для записи сервисных событий
-    """Пишет важное сервисное событие с кодом и русским пояснением."""
+def log_service_event(status_code: int, message: str, persist_success: bool = False) -> None:  # Упрощенный вызов для записи сервисных событий
+    """Пишет сервисное событие с опциональным сохранением успешных запросов."""
 
     description = SERVICE_STATUS_EXPLANATIONS.get(status_code, "Сервисное сообщение")  # Находим пояснение по коду
     service_logger.info(message, extra={"status_code": status_code, "status_description": description})  # Логируем событие в файл
-    if service_event_logger is not None:  # Проверяем, инициализирован ли логгер базы
+    should_persist = persist_success or status_code >= 400  # Решаем, писать ли успешные события в базу
+    if should_persist and service_event_logger is not None:  # Проверяем, инициализирован ли логгер базы и нужно ли писать
         service_event_logger.log_event(status_code, description, message)  # Дублируем событие в базу с локальным временем
 
 
@@ -301,6 +302,7 @@ class EventLogger:
             cursor = self._connection.cursor()  # Получаем курсор
             cursor.execute("DELETE FROM events")  # Удаляем все строки таблицы событий
             self._connection.commit()  # Фиксируем изменения после удаления
+        self._vacuum()  # Запускаем VACUUM вне блокировки, чтобы освободить место и уменьшить файл
 
     def delete_message(self, record_id: int) -> bool:
         with self._lock:  # Начинаем потокобезопасную операцию
@@ -312,6 +314,15 @@ class EventLogger:
             deleted = cursor.rowcount > 0  # Фиксируем, была ли удалена хотя бы одна строка
             self._connection.commit()  # Фиксируем изменения после удаления
         return deleted  # Возвращаем результат удаления
+
+    def _vacuum(self) -> None:
+        with self._lock:  # Начинаем потокобезопасную операцию
+            original_isolation = self._connection.isolation_level  # Запоминаем исходный режим автокоммита
+            self._connection.isolation_level = None  # Переводим соединение в автокоммит для VACUUM
+            try:  # Оборачиваем в try/finally, чтобы вернуть режим даже при ошибке
+                self._connection.execute("VACUUM")  # Запускаем VACUUM для сжатия файла базы
+            finally:  # Гарантируем возврат исходных настроек
+                self._connection.isolation_level = original_isolation  # Восстанавливаем режим автокоммита
 
     def fetch_messages(self, peer_id: Optional[int] = None, limit: int = 50) -> List[Dict]:
         with self._lock:  # Начинаем безопасное чтение
@@ -485,6 +496,16 @@ class ServiceEventLogger:  # Логгер сервисных событий с �
             cursor = self._connection.cursor()  # Берем курсор
             cursor.execute("DELETE FROM service_events")  # Удаляем все строки
             self._connection.commit()  # Сохраняем изменения
+        self._vacuum()  # Запускаем VACUUM вне блокировки, чтобы уменьшить файл базы после очистки
+
+    def _vacuum(self) -> None:
+        with self._lock:  # Начинаем защищенную операцию
+            original_isolation = self._connection.isolation_level  # Запоминаем исходный режим автокоммита
+            self._connection.isolation_level = None  # Переключаем соединение в автокоммит для VACUUM
+            try:  # Оборачиваем в try/finally, чтобы гарантировать возврат настроек
+                self._connection.execute("VACUUM")  # Запускаем VACUUM для физического сжатия файла базы
+            finally:  # Независимо от результата
+                self._connection.isolation_level = original_isolation  # Возвращаем исходный режим автокоммита
 
 
 class BotMonitor:
