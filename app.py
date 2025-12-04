@@ -729,6 +729,31 @@ class BotMonitor:
             logger.debug("Не удалось запросить файл видео: %s", exc)  # Пишем отладку при неудаче
             return None  # Возвращаем пустое значение
 
+    def _resolve_video_player_url(self, video_block: Dict) -> Optional[str]:
+        if not isinstance(video_block, dict):  # Проверяем, что блок видео представлен словарем
+            return None  # Возвращаем пустое значение при некорректном формате
+        player_link = video_block.get("player")  # Пытаемся достать ссылку на плеер из исходного payload
+        if isinstance(player_link, str) and player_link:  # Проверяем, что ссылка на плеер валидная строка
+            return player_link  # Возвращаем найденную ссылку на плеер
+        owner_id = video_block.get("owner_id")  # Получаем owner_id для обращения к VK API
+        video_id = video_block.get("id")  # Получаем id видео для запроса
+        access_key = video_block.get("access_key")  # Получаем access_key, если он присутствует
+        if owner_id is None or video_id is None:  # Проверяем наличие обязательных идентификаторов
+            return None  # Без идентификаторов нельзя запросить player через API
+        videos_param = f"{owner_id}_{video_id}" + (f"_{access_key}" if access_key else "")  # Формируем параметр videos для запроса
+        try:  # Пытаемся обратиться к VK API за ссылкой на плеер
+            response = self.session.method("video.get", {"videos": videos_param})  # Запрашиваем данные видео через video.get
+            items = response.get("items", []) if isinstance(response, dict) else []  # Забираем список элементов из ответа
+            if not items:  # Проверяем, что ответ содержит данные
+                return None  # Если элементов нет, вернуть нечего
+            player_link = items[0].get("player") if isinstance(items[0], dict) else None  # Достаём ссылку на плеер из первого элемента
+            if isinstance(player_link, str) and player_link:  # Проверяем, что ссылка корректна
+                return player_link  # Возвращаем найденную ссылку на плеер
+            return None  # Возвращаем пустое значение, если player не найден
+        except Exception as exc:  # Обрабатываем любые исключения от VK API
+            logger.debug("Не удалось запросить ссылку плеера: %s", exc)  # Пишем отладочное сообщение о неудаче
+            return None  # Возвращаем пустой результат при ошибке
+
     def _pick_attachment_url(self, attachment: Dict) -> Optional[str]:
         if not isinstance(attachment, dict):  # Проверяем формат вложения
             return None  # Возвращаем пустое значение
@@ -880,7 +905,7 @@ class BotMonitor:
         normalized["download_state"] = "pending" if download_url else "missing"  # Помечаем статус скачивания по умолчанию
         normalized["download_error"] = None  # Подготавливаем поле для сообщения об ошибке скачивания
         video_block = normalized.get("video") if isinstance(normalized.get("video"), dict) else {}  # Извлекаем блок видео при наличии
-        player_fallback = video_block.get("player") if isinstance(video_block, dict) else None  # Получаем ссылку на плеер видео как запасной вариант
+        player_fallback = self._resolve_video_player_url(video_block) if att_type == "video" else None  # Пытаемся достать ссылку на плеер из payload или через API
         if not download_url and att_type == "video" and player_fallback:  # Проверяем, что mp4 не найден, но есть ссылка на плеер
             normalized["url"] = player_fallback  # Сохраняем ссылку на плеер, чтобы фронт мог открыть видео хотя бы во вкладке VK
             target_path = self._build_local_path(peer_id, message_id, player_fallback, att_type or "video")  # Формируем путь для сохранения через yt-dlp

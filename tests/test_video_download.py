@@ -150,6 +150,43 @@ class BotMonitorVideoDownloadTest(unittest.TestCase):  # Определяем н
         with open(local_path, "rb") as saved_file:  # Открываем сохраненный файл
             self.assertEqual(saved_file.read(), fake_bytes)  # Сравниваем содержимое с тестовым набором байт
 
+    def test_video_fetches_player_via_api_and_downloads(self):  # Проверяем, что player берется из VK API и используется для скачивания
+        fake_bytes = b"from-api-player"  # Готовим тестовое содержимое файла для проверки скачивания через API player
+
+        class FakeYDL:  # Создаем заглушку для yt-dlp
+            def __init__(self, options):  # Принимаем словарь опций
+                self.options = options  # Сохраняем опции для отладки
+
+            def __enter__(self):  # Вход в контекстный менеджер
+                return self  # Возвращаем себя как загрузчик
+
+            def __exit__(self, exc_type, exc_val, exc_tb):  # Выход из контекстного менеджера
+                return False  # Не подавляем исключения
+
+            def download(self, urls):  # Подменяем метод скачивания
+                target_pattern = Path(self.options["outtmpl"])  # Берем шаблон пути из опций
+                target_path = Path(str(target_pattern).replace("%(ext)s", "mp4"))  # Подставляем расширение mp4 вручную
+                target_path.parent.mkdir(parents=True, exist_ok=True)  # Создаем директорию для файла
+                target_path.write_bytes(fake_bytes)  # Записываем тестовые байты в файл
+
+        self.monitor.session.method = MagicMock(  # Подменяем обращение к VK API
+            return_value={"items": [{"player": "https://vk.com/video_ext.php?from_api"}]}  # Возвращаем player в ответе API
+        )  # Завершаем настройку заглушки
+        with patch("app.ytdlp", type("FakeModule", (), {"YoutubeDL": FakeYDL})):  # Подменяем модуль yt-dlp на фейковый
+            attachment = {  # Формируем вложение без mp4 и без player в payload
+                "type": "video",  # Указываем тип видео
+                "video": {"owner_id": 7, "id": 8, "access_key": "secret"},  # Добавляем поля для вызова video.get
+            }  # Завершаем словарь вложения
+            normalized = self.monitor._normalize_attachment(attachment, peer_id=123, message_id=456)  # Нормализуем вложение и пытаемся скачать
+
+        self.assertEqual(normalized.get("download_state"), "ready")  # Проверяем, что статус скачивания успешный
+        self.assertEqual(normalized.get("url"), "https://vk.com/video_ext.php?from_api")  # Убеждаемся, что ссылка на плеер сохранена
+        self.assertIsNone(normalized.get("download_error"))  # Проверяем, что ошибок не зафиксировано
+        local_path = normalized.get("local_path")  # Получаем путь до сохраненного файла
+        self.assertTrue(local_path and Path(local_path).exists())  # Проверяем, что файл действительно создан
+        with open(local_path, "rb") as saved_file:  # Открываем сохраненный файл
+            self.assertEqual(saved_file.read(), fake_bytes)  # Сверяем содержимое файла с тестовыми байтами
+
 
 if __name__ == "__main__":  # Точка входа для запуска файла напрямую
     unittest.main()  # Запускаем тестовый раннер
