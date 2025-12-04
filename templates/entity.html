@@ -18,6 +18,8 @@
     .stat-card { min-height: 140px; } /* Минимальная высота карточки статистики */
     .attachment-pill { display: inline-flex; gap: 6px; align-items: center; padding: 4px 10px; border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(255, 255, 255, 0.05); color: #e2e8f0; font-size: 12px; text-decoration: none; } /* Пилюля вложения */
     .attachment-pill:hover { text-decoration: none; background: rgba(255, 255, 255, 0.08); } /* Подсветка вложения */
+    .attachment-pending { border-style: dashed; background: rgba(59, 130, 246, 0.18); color: #cbd5e1; } /* Подсветка ожидания загрузки вложения */
+    .attachment-failed { border-style: dashed; background: rgba(248, 113, 113, 0.2); color: #fecaca; border-color: rgba(248, 113, 113, 0.5); } /* Подсветка ошибок скачивания */
     .attachment-photo { border-color: rgba(59, 130, 246, 0.5); color: #bfdbfe; } /* Цвет фото */
     .attachment-video { border-color: rgba(244, 114, 182, 0.5); color: #fbcfe8; } /* Цвет видео */
     .attachment-doc { border-color: rgba(74, 222, 128, 0.5); color: #bbf7d0; } /* Цвет документа */
@@ -182,6 +184,7 @@
     </div> <!-- Конец блока таблицы -->
   </div> <!-- Конец контейнера -->
 
+  <script src="{{ url_for('static', filename='js/gallery.js') }}"></script> <!-- Подключаем общий скрипт галереи -->
   <script> // Начало скрипта форматирования времени
     const timeCells = document.querySelectorAll('[data-time]'); // Находим все элементы с датами
     const formatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }); // Настраиваем формат локального времени
@@ -191,168 +194,20 @@
       cell.textContent = parsed && !Number.isNaN(parsed.valueOf()) ? formatter.format(parsed) : '—'; // Подставляем форматированное значение
     }); // Конец цикла
 
-    const galleryModal = document.getElementById('gallery-modal'); // Находим фон модалки галереи
-    const galleryStrip = document.getElementById('gallery-strip'); // Находим полосу миниатюр
-    const galleryMedia = document.getElementById('gallery-media'); // Находим контейнер медиа
-    const galleryCaption = document.getElementById('gallery-caption'); // Находим подпись файла
-    const galleryOrigin = document.getElementById('gallery-origin'); // Находим подпись источника
-    const galleryLinks = document.getElementById('gallery-links'); // Находим блок ссылок
-    const galleryPrev = document.getElementById('gallery-prev'); // Находим кнопку «назад»
-    const galleryNext = document.getElementById('gallery-next'); // Находим кнопку «вперед»
-    const galleryClose = document.getElementById('gallery-close'); // Находим кнопку закрытия
+    const galleryApi = window.galleryBridge || {}; // Подготавливаем общий API галереи
     const serverMessages = {{ payload.messages | tojson }}; // Забираем сообщения с вложениями из шаблона
-    let galleryStore = {}; // Хранилище галерей по ключу
-    let currentGalleryKey = null; // Текущий ключ открытой галереи
-    let currentGalleryIndex = 0; // Текущий индекс выбранного вложения
-
-    function isVideoType(type) { // Проверяем, является ли тип видео
-      return ['video', 'story'].includes(type); // Возвращаем результат проверки по списку типов
-    } // Конец функции проверки видео
-
-    function normalizeAttachmentLink(att) { // Получаем ссылку на вложение
-      if (!att) { // Если вложения нет
-        return null; // Возвращаем пусто
-      } // Конец проверки
-      if (att.url) { // Если есть прямой url
-        return att.url; // Возвращаем url
-      } // Конец проверки прямой ссылки
-      if (att.public_url) { // Если есть публичная ссылка
-        return att.public_url; // Возвращаем публичную ссылку
-      } // Конец проверки публичной ссылки
-      if (att.photo && att.photo.sizes && att.photo.sizes.length) { // Если это фото со списком размеров
-        const sorted = [...att.photo.sizes].sort((a, b) => b.width - a.width); // Сортируем размеры по ширине
-        return sorted[0]?.url || null; // Берем самый широкий вариант
-      } // Конец проверки фото
-      if (att.video && att.video.player) { // Если это видео с полем player
-        return att.video.player; // Возвращаем ссылку на плеер
-      } // Конец проверки видео
-      return null; // Возвращаем пусто, если ничего не нашли
-    } // Конец функции получения ссылки
-
-    function normalizeAttachmentItem(att, originLabel) { // Приводим вложение к единому виду
-      const type = att?.type || 'file'; // Определяем тип
-      const url = normalizeAttachmentLink(att); // Получаем ссылку
-      const caption = att?.title || att?.name || att?.doc?.title || att?.link?.title || att?.photo?.text || att?.description || 'Без описания'; // Формируем подпись
-      if (!url) { // Если ссылки нет
-        return null; // Не добавляем элемент в галерею
-      } // Конец проверки ссылки
-      return { // Возвращаем нормализованное вложение
-        url, // Поле ссылки
-        type, // Тип вложения
-        caption, // Подпись файла
-        origin: originLabel || 'Сообщение', // Источник
-      }; // Конец объекта
-    } // Конец функции нормализации
-
-    function registerGallery(items, galleryKey, originLabel) { // Регистрируем галерею по ключу
-      if (!Array.isArray(items) || !items.length) { // Если вложений нет
-        return; // Выходим без регистрации
-      } // Конец проверки вложений
-      const normalized = items // Приводим вложения к единому виду
-        .map((att) => normalizeAttachmentItem(att, originLabel)) // Нормализуем каждое вложение
-        .filter(Boolean); // Убираем пустые
-      if (!normalized.length) { // Если после фильтрации пусто
-        return; // Выходим
-      } // Конец проверки пустого списка
-      galleryStore[galleryKey] = { items: normalized, meta: { peer: originLabel || 'Сообщение' } }; // Сохраняем галерею в хранилище
-    } // Конец функции регистрации
-
-    function renderGalleryStrip(galleryData) { // Рисуем миниатюры галереи
-      if (!galleryData || !Array.isArray(galleryData.items) || galleryData.items.length === 0) { // Проверяем входные данные
-        galleryStrip.innerHTML = '<span class="text-secondary small">Вложений нет</span>'; // Показываем плейсхолдер
-        return; // Прерываем выполнение
-      } // Конец проверки
-      const buttons = galleryData.items.map((item, idx) => { // Строим кнопки
-        const label = item.type || 'Файл'; // Получаем подпись типа
-        const activeClass = idx === currentGalleryIndex ? 'active' : ''; // Определяем активный класс
-        return `<button type="button" class="btn btn-outline-light btn-sm gallery-thumb ${activeClass}" data-gallery-index="${idx}">${idx + 1}. ${label}</button>`; // Возвращаем HTML кнопки
-      }); // Конец сборки кнопок
-      galleryStrip.innerHTML = buttons.join(''); // Подставляем миниатюры в DOM
-    } // Конец функции полосы миниатюр
-
-    function renderGallerySlide(galleryData, index) { // Рисуем выбранное вложение
-      if (!galleryData || !Array.isArray(galleryData.items) || galleryData.items.length === 0) { // Проверяем наличие данных
-        galleryMedia.innerHTML = '<div class="text-secondary">Вложений нет</div>'; // Плейсхолдер медиа
-        galleryCaption.textContent = '—'; // Очищаем подпись
-        galleryOrigin.textContent = 'Источник неизвестен'; // Очищаем источник
-        galleryLinks.innerHTML = '—'; // Очищаем ссылки
-        return; // Выходим
-      } // Конец проверки данных
-      const boundedIndex = Math.max(0, Math.min(index, galleryData.items.length - 1)); // Гарантируем допустимый индекс
-      currentGalleryIndex = boundedIndex; // Обновляем индекс
-      const item = galleryData.items[boundedIndex]; // Берем нужное вложение
-      const isVideo = isVideoType(item.type); // Проверяем, видео ли это
-      const mediaHtml = isVideo ? `<video controls src="${item.url}" class="w-100" preload="metadata"></video>` : `<img src="${item.url}" alt="Вложение" loading="lazy" />`; // Формируем HTML медиа
-      galleryMedia.innerHTML = mediaHtml; // Подставляем медиа
-      galleryCaption.textContent = item.caption || 'Без описания'; // Обновляем подпись
-      galleryOrigin.textContent = item.origin || galleryData.meta.peer || 'Источник неизвестен'; // Обновляем источник
-      galleryLinks.innerHTML = `<a href="${item.url}" target="_blank" rel="noopener noreferrer">Открыть оригинал</a>`; // Добавляем ссылку
-      renderGalleryStrip(galleryData); // Перерисовываем миниатюры
-    } // Конец функции показа слайда
-
-    function openGallery(key, index = 0) { // Открываем галерею
-      const galleryData = galleryStore[key]; // Берем данные по ключу
-      if (!galleryData) { // Если нет данных
-        return; // Не открываем модалку
-      } // Конец проверки
-      currentGalleryKey = key; // Запоминаем ключ
-      renderGallerySlide(galleryData, index); // Рисуем выбранный слайд
-      galleryModal.style.display = 'flex'; // Показываем модалку
-    } // Конец функции открытия
-
-    function closeGallery() { // Закрываем галерею
-      galleryModal.style.display = 'none'; // Скрываем модалку
-      currentGalleryKey = null; // Сбрасываем ключ
-      currentGalleryIndex = 0; // Сбрасываем индекс
-    } // Конец функции закрытия
-
-    function moveGallery(delta) { // Перелистываем галерею
-      if (!currentGalleryKey || !galleryStore[currentGalleryKey]) { // Проверяем наличие активной галереи
-        return; // Выходим, если нечего листать
-      } // Конец проверки
-      const galleryData = galleryStore[currentGalleryKey]; // Берем текущие данные
-      const nextIndex = (currentGalleryIndex + delta + galleryData.items.length) % galleryData.items.length; // Вычисляем новый индекс по кругу
-      renderGallerySlide(galleryData, nextIndex); // Рисуем новый слайд
-    } // Конец функции перелистывания
-
-    function prepareGalleries() { // Регистрируем все галереи из данных
-      (serverMessages || []).forEach((msg, idx) => { // Перебираем сообщения
-        const galleryKey = `entity-msg-${idx}`; // Формируем ключ
-        registerGallery(msg.attachments || [], galleryKey, msg.peer_title || msg.from_name || 'Сообщение'); // Регистрируем вложения
-      }); // Конец цикла
-    } // Конец функции подготовки
-
-    function bindGalleryTriggers() { // Навешиваем клики на скрепки
-      document.querySelectorAll('[data-gallery-key]').forEach((node) => { // Перебираем все элементы со скрепкой
-        node.addEventListener('click', (event) => { // Слушаем клик
-          event.preventDefault(); // Блокируем переход по ссылке
-          const key = node.getAttribute('data-gallery-key'); // Забираем ключ галереи
-          openGallery(key, 0); // Открываем первую вложение
-        }); // Конец обработчика клика
-      }); // Конец перебора элементов
-    } // Конец функции биндинга
-
-    galleryPrev.addEventListener('click', () => moveGallery(-1)); // Листаем назад по клику
-    galleryNext.addEventListener('click', () => moveGallery(1)); // Листаем вперед по клику
-    galleryClose.addEventListener('click', closeGallery); // Закрываем модалку по кнопке
-    galleryStrip.addEventListener('click', (event) => { // Слушаем клики по миниатюрам
-      const target = event.target.closest('[data-gallery-index]'); // Ищем кнопку миниатюры
-      if (!target) { // Если клик не по кнопке
-        return; // Ничего не делаем
-      } // Конец проверки
-      const index = Number(target.getAttribute('data-gallery-index')); // Забираем индекс
-      if (Number.isNaN(index)) { // Проверяем валидность
-        return; // Выходим при ошибке индекса
-      } // Конец проверки
-      const galleryData = galleryStore[currentGalleryKey]; // Берем текущие данные галереи
-      if (!galleryData) { // Если данных нет
-        return; // Выходим
-      } // Конец проверки
-      renderGallerySlide(galleryData, index); // Рисуем выбранный слайд
-    }); // Конец обработчика клика по миниатюрам
-
-    prepareGalleries(); // Регистрируем все вложения после загрузки страницы
-    bindGalleryTriggers(); // Навешиваем клики на скрепки
+    function registerEntityGalleries() { // Регистрируем галереи для всех сообщений
+      if (!Array.isArray(serverMessages)) { // Проверяем формат входных данных
+        return; // Выходим, если данных нет
+      } // Конец проверки формата
+      serverMessages.forEach((msg, idx) => { // Перебираем сообщения
+        const galleryKey = `entity-msg-${idx}`; // Формируем ключ галереи по индексу
+        if (galleryApi.registerMessageGallery) { // Проверяем наличие функции регистрации
+          galleryApi.registerMessageGallery(msg, galleryKey); // Регистрируем вложения через общий модуль
+        } // Конец проверки функции регистрации
+      }); // Конец цикла сообщений
+    } // Конец функции регистрации галерей
+    registerEntityGalleries(); // Запускаем регистрацию после загрузки страницы
   </script> <!-- Конец скрипта -->
 </body> <!-- Конец тела -->
 </html> <!-- Конец документа -->

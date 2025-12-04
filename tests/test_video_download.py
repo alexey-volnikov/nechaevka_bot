@@ -1,0 +1,192 @@
+import os  # Импортируем os для удаления временных файлов после тестов
+import tempfile  # Импортируем tempfile для создания временных директорий и файлов
+import unittest  # Импортируем unittest для написания тестовых кейсов
+from pathlib import Path  # Импортируем Path для работы с путями к файлам
+from unittest.mock import MagicMock, patch  # Импортируем инструменты для подмены функций и объектов в тестах
+
+import requests  # Импортируем requests, чтобы использовать исключения HTTPError в тестах
+
+from app import BotMonitor, BotState, EventLogger  # Импортируем классы приложения, которые будем тестировать
+
+
+class BotMonitorVideoDownloadTest(unittest.TestCase):  # Определяем набор тестов для скачивания видео
+    def setUp(self) -> None:  # Подготавливаем окружение перед каждым тестом
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False)  # Создаем временный файл базы, чтобы не трогать реальные данные
+        self.temp_db.close()  # Закрываем файловый дескриптор, позволяя SQLite использовать файл
+        self.temp_dir = tempfile.TemporaryDirectory()  # Создаем временную директорию для вложений
+        self.logger = EventLogger(self.temp_db.name)  # Создаем логгер событий, который пишет в временную базу
+        self.monitor = BotMonitor("token", 1, BotState(), self.logger)  # Создаем экземпляр монитора бота
+        self.monitor.attachments_dir = Path(self.temp_dir.name)  # Перенаправляем вложения в временную папку
+        self.monitor.attachments_dir.mkdir(parents=True, exist_ok=True)  # Убеждаемся, что временная папка существует
+        self.monitor.session = MagicMock()  # Подменяем сессию VK API на заглушку, чтобы не ходить в сеть
+
+    def tearDown(self) -> None:  # Очищаем временные ресурсы после каждого теста
+        self.logger._connection.close()  # Закрываем соединение с временной базой
+        os.unlink(self.temp_db.name)  # Удаляем файл базы
+        self.temp_dir.cleanup()  # Удаляем временную директорию вложений
+
+    def test_video_downloads_from_direct_mp4(self):  # Проверяем, что видео с прямой mp4-ссылкой скачивается
+        fake_body = b"video-bytes"  # Задаем тестовое содержимое файла
+
+        class FakeResponse:  # Определяем фейковый ответ requests
+            status_code = 200  # Фиксируем успешный статус ответа
+
+            def raise_for_status(self):  # Метод для проверки статуса
+                return None  # Ничего не делаем, имитируя успешный ответ
+
+            def iter_content(self, chunk_size=8192):  # Итератор по частям ответа
+                yield fake_body  # Отдаем заранее подготовленные байты
+
+        fake_response = FakeResponse()  # Создаем экземпляр фейкового ответа
+        with patch("app.requests.get", return_value=fake_response):  # Подменяем requests.get, чтобы не ходить в интернет
+            attachment = {  # Формируем вложение видео с готовыми mp4-ссылками
+                "type": "video",  # Указываем тип вложения
+                "video": {"files": {"mp4_240": "http://example.com/low.mp4", "mp4_720": "http://example.com/high.mp4"}},  # Блок файлов видео
+            }  # Завершаем словарь вложения
+            normalized = self.monitor._normalize_attachment(attachment, peer_id=10, message_id=20)  # Нормализуем и скачиваем вложение
+        self.assertEqual(normalized.get("download_url"), "http://example.com/high.mp4")  # Проверяем, что выбрана ссылка высокого качества
+        self.assertEqual(normalized.get("download_state"), "ready")  # Проверяем, что статус скачивания успешный
+        local_path = normalized.get("local_path")  # Читаем путь до сохраненного файла
+        self.assertIsNotNone(local_path)  # Убеждаемся, что путь заполнен
+        with open(local_path, "rb") as saved_file:  # Открываем сохраненный файл
+            self.assertEqual(saved_file.read(), fake_body)  # Проверяем, что содержимое совпадает с фейковым ответом
+
+    def test_video_fallback_uses_api_and_saves(self):  # Проверяем, что при отсутствии mp4 в payload используем VK API
+        fake_body = b"api-video"  # Задаем тестовое содержимое файла для API-ветки
+
+        class FakeResponse:  # Определяем фейковый ответ requests для скачивания
+            status_code = 200  # Фиксируем успешный статус ответа
+
+            def raise_for_status(self):  # Метод проверки статуса
+                return None  # Ничего не делаем, имитируя успешный ответ
+
+            def iter_content(self, chunk_size=8192):  # Итератор по содержимому ответа
+                yield fake_body  # Отдаем тестовые байты
+
+        fake_response = FakeResponse()  # Создаем экземпляр фейкового ответа
+        self.monitor.session.method = MagicMock(  # Подменяем метод VK API
+            return_value={"items": [{"files": {"mp4": "http://example.com/from_api.mp4"}}]}  # Возвращаем структуру с mp4-ссылкой
+        )  # Завершаем настройку заглушки
+        with patch("app.requests.get", return_value=fake_response):  # Подменяем запросы для скачивания
+            attachment = {  # Формируем вложение без блока files
+                "type": "video",  # Указываем тип видео
+                "video": {"owner_id": 1, "id": 2, "access_key": "key"},  # Добавляем поля для вызова video.get
+            }  # Завершаем словарь вложения
+            normalized = self.monitor._normalize_attachment(attachment, peer_id=11, message_id=22)  # Нормализуем вложение через API
+        self.assertEqual(normalized.get("download_url"), "http://example.com/from_api.mp4")  # Проверяем, что ссылка взята из API
+        self.assertEqual(normalized.get("download_state"), "ready")  # Проверяем успешный статус скачивания
+        local_path = normalized.get("local_path")  # Берем путь до сохраненного файла
+        self.assertTrue(local_path and Path(local_path).exists())  # Убеждаемся, что файл реально создан
+        with open(local_path, "rb") as saved_file:  # Открываем сохраненный файл
+            self.assertEqual(saved_file.read(), fake_body)  # Сверяем содержимое с тестовыми данными
+
+    def test_video_without_files_keeps_player_link(self):  # Проверяем, что при отсутствии mp4 сохраняется ссылка на плеер
+        attachment = {  # Формируем вложение без прямых ссылок на mp4
+            "type": "video",  # Указываем тип вложения как видео
+            "video": {"player": "https://vk.com/video_ext.php?test"},  # Добавляем только ссылку на плеер VK
+        }  # Завершаем словарь вложения
+        normalized = self.monitor._normalize_attachment(attachment, peer_id=33, message_id=44)  # Нормализуем вложение без скачивания
+        self.assertIsNone(normalized.get("download_url"))  # Убеждаемся, что прямая ссылка mp4 не определена
+        self.assertEqual(normalized.get("download_state"), "failed")  # Проверяем, что статус помечен как неуспешный
+        self.assertEqual(normalized.get("url"), "https://vk.com/video_ext.php?test")  # Убеждаемся, что ссылка на плеер сохранена
+        self.assertIsNone(normalized.get("local_path"))  # Проверяем, что файл не создавался
+        self.assertTrue(normalized.get("download_error"))  # Убеждаемся, что причина ошибки записана
+
+    def test_failed_download_reports_http_reason(self):  # Проверяем, что HTTP-ошибка возвращает причину в download_error
+        class FailingResponse:  # Определяем ответ, который вернёт ошибку 404
+            status_code = 404  # Указываем код ответа, который увидит обработчик
+            reason = "Not Found"  # Добавляем текстовое пояснение статуса
+
+            def raise_for_status(self):  # Метод проверки статуса
+                raise requests.HTTPError(response=self)  # Бросаем HTTPError с привязанным ответом
+
+            def iter_content(self, chunk_size=8192):  # Итератор по телу ответа
+                yield b""  # Возвращаем пустой контент, чтобы удовлетворить интерфейс
+
+        attachment = {  # Формируем вложение документа
+            "type": "doc",  # Указываем тип вложения документ
+            "doc": {"url": "http://example.com/missing.txt"},  # Добавляем ссылку, которая вернёт ошибку
+        }  # Завершаем словарь вложения
+        with patch("app.requests.get", return_value=FailingResponse()):  # Подменяем запросы на падающий ответ
+            normalized = self.monitor._normalize_attachment(attachment, peer_id=55, message_id=66)  # Нормализуем вложение с ошибкой скачивания
+        self.assertEqual(normalized.get("download_state"), "failed")  # Проверяем, что статус помечен как ошибка
+        self.assertIn("HTTP 404", normalized.get("download_error", ""))  # Убеждаемся, что код ответа попал в причину
+        self.assertIn("Not Found", normalized.get("download_error", ""))  # Проверяем наличие текстового пояснения
+
+    def test_missing_download_url_reports_reason(self):  # Проверяем, что отсутствие ссылки сопровождается пояснением
+        attachment = {"type": "video", "video": {}}  # Формируем видео без ссылок mp4 и без player
+        normalized = self.monitor._normalize_attachment(attachment, peer_id=77, message_id=88)  # Нормализуем вложение без доступных ссылок
+        self.assertEqual(normalized.get("download_state"), "missing")  # Убеждаемся, что статус выставлен как отсутствующий
+        self.assertIn("Нет доступной ссылки для скачивания вложения", normalized.get("download_error", ""))  # Проверяем, что базовая формулировка присутствует
+        self.assertIn("Видео без блока video", normalized.get("download_error", ""))  # Убеждаемся, что добавлено детальное пояснение
+
+    def test_video_downloads_via_yt_dlp_when_only_player(self):  # Проверяем, что видео скачивается через yt-dlp, если есть только player
+        fake_bytes = b"from-player"  # Готовим тестовое содержимое файла
+
+        class FakeYDL:  # Создаем заглушку загрузчика yt-dlp
+            def __init__(self, options):  # Принимаем опции и сохраняем их
+                self.options = options  # Запоминаем словарь настроек для проверки
+
+            def __enter__(self):  # Реализуем вход в контекстный менеджер
+                return self  # Возвращаем себя как загрузчик
+
+            def __exit__(self, exc_type, exc_val, exc_tb):  # Реализуем выход из контекста
+                return False  # Не подавляем исключения
+
+            def download(self, urls):  # Подменяем метод скачивания
+                target_pattern = Path(self.options["outtmpl"])  # Получаем шаблон пути из опций
+                target_path = Path(str(target_pattern).replace("%(ext)s", "mp4"))  # Подставляем расширение mp4 вручную
+                target_path.parent.mkdir(parents=True, exist_ok=True)  # Создаем директорию для файла
+                target_path.write_bytes(fake_bytes)  # Записываем тестовые байты в файл
+
+        with patch("app.ytdlp", type("FakeModule", (), {"YoutubeDL": FakeYDL})):  # Подменяем модуль yt-dlp на заглушку
+            attachment = {"type": "video", "video": {"player": "https://vk.com/video_ext.php?custom"}}  # Формируем вложение только с ссылкой на плеер
+            normalized = self.monitor._normalize_attachment(attachment, peer_id=99, message_id=100)  # Нормализуем и пытаемся скачать через плеер
+
+        self.assertEqual(normalized.get("download_state"), "ready")  # Проверяем, что статус стал успешным
+        self.assertIsNone(normalized.get("download_error"))  # Убеждаемся, что нет сообщения об ошибке
+        local_path = normalized.get("local_path")  # Читаем путь до сохраненного файла
+        self.assertTrue(local_path and Path(local_path).exists())  # Проверяем, что файл действительно создан
+        with open(local_path, "rb") as saved_file:  # Открываем сохраненный файл
+            self.assertEqual(saved_file.read(), fake_bytes)  # Сравниваем содержимое с тестовым набором байт
+
+    def test_video_fetches_player_via_api_and_downloads(self):  # Проверяем, что player берется из VK API и используется для скачивания
+        fake_bytes = b"from-api-player"  # Готовим тестовое содержимое файла для проверки скачивания через API player
+
+        class FakeYDL:  # Создаем заглушку для yt-dlp
+            def __init__(self, options):  # Принимаем словарь опций
+                self.options = options  # Сохраняем опции для отладки
+
+            def __enter__(self):  # Вход в контекстный менеджер
+                return self  # Возвращаем себя как загрузчик
+
+            def __exit__(self, exc_type, exc_val, exc_tb):  # Выход из контекстного менеджера
+                return False  # Не подавляем исключения
+
+            def download(self, urls):  # Подменяем метод скачивания
+                target_pattern = Path(self.options["outtmpl"])  # Берем шаблон пути из опций
+                target_path = Path(str(target_pattern).replace("%(ext)s", "mp4"))  # Подставляем расширение mp4 вручную
+                target_path.parent.mkdir(parents=True, exist_ok=True)  # Создаем директорию для файла
+                target_path.write_bytes(fake_bytes)  # Записываем тестовые байты в файл
+
+        self.monitor.session.method = MagicMock(  # Подменяем обращение к VK API
+            return_value={"items": [{"player": "https://vk.com/video_ext.php?from_api"}]}  # Возвращаем player в ответе API
+        )  # Завершаем настройку заглушки
+        with patch("app.ytdlp", type("FakeModule", (), {"YoutubeDL": FakeYDL})):  # Подменяем модуль yt-dlp на фейковый
+            attachment = {  # Формируем вложение без mp4 и без player в payload
+                "type": "video",  # Указываем тип видео
+                "video": {"owner_id": 7, "id": 8, "access_key": "secret"},  # Добавляем поля для вызова video.get
+            }  # Завершаем словарь вложения
+            normalized = self.monitor._normalize_attachment(attachment, peer_id=123, message_id=456)  # Нормализуем вложение и пытаемся скачать
+
+        self.assertEqual(normalized.get("download_state"), "ready")  # Проверяем, что статус скачивания успешный
+        self.assertEqual(normalized.get("url"), "https://vk.com/video_ext.php?from_api")  # Убеждаемся, что ссылка на плеер сохранена
+        self.assertIsNone(normalized.get("download_error"))  # Проверяем, что ошибок не зафиксировано
+        local_path = normalized.get("local_path")  # Получаем путь до сохраненного файла
+        self.assertTrue(local_path and Path(local_path).exists())  # Проверяем, что файл действительно создан
+        with open(local_path, "rb") as saved_file:  # Открываем сохраненный файл
+            self.assertEqual(saved_file.read(), fake_bytes)  # Сверяем содержимое файла с тестовыми байтами
+
+
+if __name__ == "__main__":  # Точка входа для запуска файла напрямую
+    unittest.main()  # Запускаем тестовый раннер
