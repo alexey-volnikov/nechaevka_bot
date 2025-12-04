@@ -120,6 +120,36 @@ class BotMonitorVideoDownloadTest(unittest.TestCase):  # Определяем н
         self.assertIn("Нет доступной ссылки для скачивания вложения", normalized.get("download_error", ""))  # Проверяем, что базовая формулировка присутствует
         self.assertIn("Видео без блока video", normalized.get("download_error", ""))  # Убеждаемся, что добавлено детальное пояснение
 
+    def test_video_downloads_via_yt_dlp_when_only_player(self):  # Проверяем, что видео скачивается через yt-dlp, если есть только player
+        fake_bytes = b"from-player"  # Готовим тестовое содержимое файла
+
+        class FakeYDL:  # Создаем заглушку загрузчика yt-dlp
+            def __init__(self, options):  # Принимаем опции и сохраняем их
+                self.options = options  # Запоминаем словарь настроек для проверки
+
+            def __enter__(self):  # Реализуем вход в контекстный менеджер
+                return self  # Возвращаем себя как загрузчик
+
+            def __exit__(self, exc_type, exc_val, exc_tb):  # Реализуем выход из контекста
+                return False  # Не подавляем исключения
+
+            def download(self, urls):  # Подменяем метод скачивания
+                target_pattern = Path(self.options["outtmpl"])  # Получаем шаблон пути из опций
+                target_path = Path(str(target_pattern).replace("%(ext)s", "mp4"))  # Подставляем расширение mp4 вручную
+                target_path.parent.mkdir(parents=True, exist_ok=True)  # Создаем директорию для файла
+                target_path.write_bytes(fake_bytes)  # Записываем тестовые байты в файл
+
+        with patch("app.ytdlp", type("FakeModule", (), {"YoutubeDL": FakeYDL})):  # Подменяем модуль yt-dlp на заглушку
+            attachment = {"type": "video", "video": {"player": "https://vk.com/video_ext.php?custom"}}  # Формируем вложение только с ссылкой на плеер
+            normalized = self.monitor._normalize_attachment(attachment, peer_id=99, message_id=100)  # Нормализуем и пытаемся скачать через плеер
+
+        self.assertEqual(normalized.get("download_state"), "ready")  # Проверяем, что статус стал успешным
+        self.assertIsNone(normalized.get("download_error"))  # Убеждаемся, что нет сообщения об ошибке
+        local_path = normalized.get("local_path")  # Читаем путь до сохраненного файла
+        self.assertTrue(local_path and Path(local_path).exists())  # Проверяем, что файл действительно создан
+        with open(local_path, "rb") as saved_file:  # Открываем сохраненный файл
+            self.assertEqual(saved_file.read(), fake_bytes)  # Сравниваем содержимое с тестовым набором байт
+
 
 if __name__ == "__main__":  # Точка входа для запуска файла напрямую
     unittest.main()  # Запускаем тестовый раннер

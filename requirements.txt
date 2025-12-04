@@ -2,3 +2,4 @@ flask
 python-dotenv
 vk_api
 requests
+yt-dlp
