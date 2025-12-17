@@ -784,6 +784,12 @@ class BotMonitor:
         att_type = attachment.get("type")  # Получаем тип вложения
         nested = attachment.get(att_type) if isinstance(att_type, str) else None  # Получаем вложенный блок по типу
         nested_obj = nested if isinstance(nested, dict) else {}  # Нормализуем вложенный блок к словарю
+        if att_type == "sticker":  # Обрабатываем особый случай стикера
+            sticker_block = attachment.get("sticker") if isinstance(attachment.get("sticker"), dict) else {}  # Извлекаем блок стикера
+            sticker_id = sticker_block.get("sticker_id") if isinstance(sticker_block, dict) else None  # Читаем sticker_id для сигнатуры
+            product_id = sticker_block.get("product_id") if isinstance(sticker_block, dict) else None  # Читаем product_id, если он есть
+            if sticker_id is not None:  # Проверяем, что sticker_id найден
+                return f"sticker:{sticker_id}:{product_id or ''}"  # Формируем сигнатуру по sticker_id и product_id
         owner_id = nested_obj.get("owner_id")  # Читаем owner_id при наличии
         item_id = nested_obj.get("id")  # Читаем id вложения при наличии
         access_key = nested_obj.get("access_key")  # Читаем access_key при наличии
@@ -974,25 +980,30 @@ class BotMonitor:
         normalized = dict(attachment) if isinstance(attachment, dict) else {}  # Копируем вложение, чтобы не трогать оригинал
         att_type = normalized.get("type")  # Получаем тип вложения
         sticker_block = normalized.get("sticker") if isinstance(normalized.get("sticker"), dict) else {}  # Извлекаем блок стикера при наличии
-        download_url = self._pick_sticker_image_url(sticker_block) if att_type == "sticker" else self._pick_attachment_url(normalized)  # Определяем ссылку скачивания с учетом стикеров
+        if att_type == "sticker":  # Обрабатываем особый случай стикеров сразу, не смешивая с общими правилами
+            download_url = self._pick_sticker_image_url(sticker_block)  # Пытаемся взять ссылку из набора изображений стикера
+            normalized["local_path"] = None  # Инициализируем путь до локального файла
+            normalized["download_url"] = download_url  # Сохраняем исходную ссылку, даже если её нет
+            normalized["transcript"] = normalized.get("transcript")  # Оставляем поле для совместимости с аудио
+            normalized["download_state"] = "pending"  # Ставим статус «в процессе», пока не проверили кэш
+            normalized["download_error"] = None  # Очищаем текст ошибки по умолчанию
+            sticker_id = sticker_block.get("sticker_id") if isinstance(sticker_block, dict) else None  # Читаем sticker_id для ключа кэша
+            cached_path, cache_error = self._cache_sticker_image(sticker_id, download_url)  # Пробуем достать или скачать файл стикера
+            if cached_path:  # Проверяем, удалось ли получить файл из кэша или скачать
+                normalized["local_path"] = str(cached_path)  # Записываем путь к локальному файлу
+                normalized["download_state"] = "ready"  # Помечаем готовность вложения
+                normalized["download_error"] = None  # Убираем возможные ошибки
+                return normalized  # Возвращаем вложение без дополнительных попыток
+            normalized["download_state"] = "failed"  # Помечаем, что сохранить стикер не удалось
+            normalized["download_error"] = cache_error or "Не удалось сохранить стикер: нет доступных ссылок"  # Записываем понятную причину сбоя
+            log_service_event(422, normalized["download_error"])  # Фиксируем проблему в сервисных логах
+            return normalized  # Возвращаем вложение с ошибкой
+        download_url = self._pick_attachment_url(normalized)  # Для остальных типов подбираем ссылку скачивания
         normalized["local_path"] = None  # Подготавливаем поле для пути
         normalized["download_url"] = download_url  # Сохраняем URL в явном виде
         normalized["transcript"] = normalized.get("transcript")  # Резерв для будущей расшифровки аудио
         normalized["download_state"] = "pending" if download_url else "missing"  # Помечаем статус скачивания по умолчанию
         normalized["download_error"] = None  # Подготавливаем поле для сообщения об ошибке скачивания
-        if att_type == "sticker":  # Обрабатываем особый случай стикеров
-            sticker_id = sticker_block.get("sticker_id") if isinstance(sticker_block, dict) else None  # Получаем sticker_id для кэша
-            cached_path, cache_error = self._cache_sticker_image(sticker_id, download_url)  # Пытаемся найти или скачать стикер в кэш
-            if cached_path:  # Проверяем, что файл появился в кэше
-                normalized["local_path"] = str(cached_path)  # Сохраняем путь к кэшированному стикеру
-                normalized["download_state"] = "ready"  # Отмечаем успешную загрузку стикера
-                normalized["download_error"] = None  # Убираем возможные ошибки
-                return normalized  # Возвращаем вложение сразу, не повторяя загрузку
-            if cache_error and not download_url:  # Проверяем, что не удалось скачать и нет ссылок для повтора
-                normalized["download_state"] = "failed"  # Помечаем неуспешную попытку
-                normalized["download_error"] = cache_error  # Сохраняем причину сбоя
-                log_service_event(422, cache_error)  # Фиксируем проблему в сервисных логах
-                return normalized  # Возвращаем вложение с ошибкой
         video_block = normalized.get("video") if isinstance(normalized.get("video"), dict) else {}  # Извлекаем блок видео при наличии
         player_fallback = self._resolve_video_player_url(video_block) if att_type == "video" else None  # Пытаемся достать ссылку на плеер из payload или через API
         if not download_url and att_type == "video" and player_fallback:  # Проверяем, что mp4 не найден, но есть ссылка на плеер
@@ -1484,10 +1495,40 @@ def build_dashboard_app(
         enriched: List[Dict] = []  # Готовим список нормализованных вложений
         if not isinstance(attachments, list):  # Проверяем, что входной объект — список
             return enriched  # Возвращаем пустой список при некорректном формате
+        seen_signatures: set[str] = set()  # Подготавливаем множество сигнатур, чтобы не дублировать вложения
         for raw in attachments:  # Перебираем все вложения
             if not isinstance(raw, dict):  # Проверяем тип элемента
                 continue  # Пропускаем элементы неправильного формата
             item = dict(raw)  # Делаем копию вложения
+            signature = None  # Инициализируем переменную для уникальной сигнатуры
+            try:  # Оборачиваем расчёт сигнатуры, чтобы не упасть на неожиданных данных
+                if item.get("type") == "sticker":  # Проверяем, что перед нами стикер
+                    sticker_block = item.get("sticker") if isinstance(item.get("sticker"), dict) else {}  # Извлекаем блок стикера
+                    sticker_id = sticker_block.get("sticker_id") if isinstance(sticker_block, dict) else None  # Читаем sticker_id
+                    product_id = sticker_block.get("product_id") if isinstance(sticker_block, dict) else None  # Читаем product_id
+                    if sticker_id is not None:  # Проверяем наличие sticker_id
+                        signature = f"sticker:{sticker_id}:{product_id or ''}"  # Формируем сигнатуру стикера по его ID
+                if signature is None:  # Если сигнатура пока не рассчитана
+                    nested_type = item.get("type")  # Читаем тип вложения
+                    nested_block = item.get(nested_type) if isinstance(nested_type, str) else None  # Забираем вложенный блок по типу
+                    nested_obj = nested_block if isinstance(nested_block, dict) else {}  # Нормализуем вложенный блок
+                    owner_id = nested_obj.get("owner_id")  # Читаем owner_id при наличии
+                    item_id = nested_obj.get("id")  # Читаем id вложения при наличии
+                    access_key = nested_obj.get("access_key")  # Читаем access_key при наличии
+                    if owner_id is not None and item_id is not None:  # Проверяем, что есть уникальные идентификаторы VK
+                        signature = f"{nested_type}:{owner_id}_{item_id}_{access_key or ''}"  # Формируем сигнатуру по типу и ID
+                if signature is None:  # Если уникальные ID не нашлись
+                    url = item.get("download_url") or item.get("url")  # Пробуем использовать ссылку вложения
+                    if url:  # Проверяем, что ссылка существует
+                        signature = f"{item.get('type') or 'file'}:{url}"  # Строим сигнатуру по типу и ссылке
+                if signature is None:  # Если других вариантов нет
+                    signature = json.dumps(item, sort_keys=True, ensure_ascii=False)  # Фолбэк: сериализуем вложение целиком
+            except Exception:  # Ловим любые ошибки при расчёте сигнатуры
+                signature = None  # Сбрасываем сигнатуру при сбое
+            if signature and signature in seen_signatures:  # Проверяем, не встречалось ли вложение раньше
+                continue  # Пропускаем дубликат
+            if signature:  # Если сигнатура рассчитана успешно
+                seen_signatures.add(signature)  # Добавляем её в множество, чтобы отсечь повторы
             if item.get("type") == "sticker":  # Дополнительно обрабатываем стикеры при чтении истории
                 sticker_block = item.get("sticker") if isinstance(item.get("sticker"), dict) else {}  # Забираем блок стикера
                 sticker_id = sticker_block.get("sticker_id") if isinstance(sticker_block, dict) else None  # Читаем sticker_id
