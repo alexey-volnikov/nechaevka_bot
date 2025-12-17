@@ -105,6 +105,29 @@
     return row; // Возвращаем готовую строку
   } // Конец функции построения строки логов
 
+  function buildEntityRow(message, galleryApi, galleryKey, options = {}) { // Строим строку для страниц профилей чатов и пользователей
+    const row = document.createElement('tr'); // Создаем строку таблицы
+    const formatDate = options.formatDate || ((value) => value || '—'); // Берем функцию форматирования времени
+    const showChatColumn = Boolean(options.showChatColumn); // Определяем, нужно ли показывать столбец чата
+    const showSenderColumn = Boolean(options.showSenderColumn); // Определяем, нужно ли показывать столбец отправителя
+    const createdAtCell = formatDate(message.created_at); // Форматируем время создания сообщения
+    const peerCell = buildPeerCell(message, { allowLink: true }); // Собираем ячейку чата
+    const authorCell = buildSenderCell(message, { allowLink: true, showBotBadge: true }); // Собираем ячейку отправителя
+    const { contentCell } = prepareGalleryContent(message, galleryApi, galleryKey); // Подготавливаем вложения и создаем ячейку с бейджами
+    const textCell = message.text ?? '—'; // Берем текст сообщения или плейсхолдер
+    const cells = [`<td>${createdAtCell}</td>`]; // Начинаем набор ячеек с времени
+    if (showChatColumn) { // Если нужно показывать столбец чата
+      cells.push(`<td>${peerCell}</td>`); // Добавляем ячейку чата
+    } // Конец проверки столбца чата
+    if (showSenderColumn) { // Если нужно показывать столбец отправителя
+      cells.push(`<td>${authorCell}</td>`); // Добавляем ячейку отправителя
+    } // Конец проверки столбца отправителя
+    cells.push(`<td>${contentCell}</td>`); // Добавляем ячейку с вложениями
+    cells.push(`<td>${textCell}</td>`); // Добавляем ячейку с текстом
+    row.innerHTML = cells.join(''); // Склеиваем все ячейки в строку
+    return row; // Возвращаем готовую строку
+  } // Конец функции построения строки профиля
+
   function registerEntityGalleries(messages, galleryApi) { // Регистрируем галереи на страницах профиля чата/пользователя
     if (!Array.isArray(messages)) { // Проверяем, что данные корректные
       return; // Прерываемся, если нет массива
@@ -123,6 +146,7 @@
     prepareGalleryContent, // Выносим подготовку вложений и регистрацию галерей
     buildDashboardRow, // Выносим построение строки дашборда
     buildLogsRow, // Выносим построение строки логов
+    buildEntityRow, // Выносим построение строки профиля чата или пользователя
     registerEntityGalleries, // Выносим регистрацию галерей в профилях
   }; // Завершаем экспорт
 })(window); // Передаем window как глобальный объект
