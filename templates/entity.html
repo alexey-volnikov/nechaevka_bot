@@ -61,7 +61,7 @@
             {% endif %} <!-- Конец проверки демо -->
           </div> <!-- Конец строки бейджей -->
           <h1 class="fw-bold mb-1">{{ payload.summary.peer_title or payload.summary.from_name }}</h1> <!-- Заголовок с именем -->
-          <p class="text-secondary mb-0">ID: {{ payload.summary.peer_id or payload.summary.from_id }} • Лимит записей: {{ limit }}</p> <!-- Подпись с ID и лимитом -->
+          <p class="text-secondary mb-0">ID: {{ payload.summary.peer_id or payload.summary.from_id }} • Лента листается без лимита</p> <!-- Подпись с ID и информацией о бесконечной ленте -->
         </div> <!-- Конец блока заголовка -->
       </div> <!-- Конец левой части -->
       <div class="d-flex flex-wrap gap-2"> <!-- Правая часть с кнопками -->
@@ -141,25 +141,53 @@
     const tableBody = document.getElementById('messages-body'); // Находим тело таблицы сообщений
     const galleryApi = window.galleryBridge || {}; // Подготавливаем общий API галереи
     const chatApi = window.chatHistory || {}; // Подготавливаем единый модуль истории чата
-    const serverMessages = {{ payload.messages | tojson }}; // Забираем сообщения с вложениями из шаблона
+    const serverMessages = {{ payload.messages | tojson }}; // Забираем стартовые сообщения с вложениями из шаблона
     const showChatColumn = {{ 'true' if show_chat_column else 'false' }}; // Флаг отображения столбца чата
     const showSenderColumn = {{ 'true' if show_sender_column else 'false' }}; // Флаг отображения столбца отправителя
     const formatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }); // Настраиваем формат локального времени
+    const pageSize = {{ page_size | tojson }}; // Размер страницы для постраничной подгрузки
+    const basePeerId = {{ payload.summary.peer_id | tojson }}; // Фильтр по чату для API
+    const baseFromId = {{ payload.summary.from_id | tojson }}; // Фильтр по отправителю для API
+    let galleryCounter = 0; // Счетчик ключей галереи для стабильных идентификаторов
+    let currentOffset = Array.isArray(serverMessages) ? serverMessages.length : 0; // Текущее смещение для следующей подгрузки
+    let isLoading = false; // Флаг состояния загрузки
+    let hasMore = Array.isArray(serverMessages) && serverMessages.length === pageSize; // Флаг наличия следующих страниц
+
     const formatDate = (value) => { // Готовим вспомогательную функцию форматирования дат
       const parsed = value ? new Date(value) : null; // Парсим дату из строки
       const validDate = parsed && !Number.isNaN(parsed.valueOf()); // Проверяем валидность даты
       return validDate ? formatter.format(parsed) : '—'; // Возвращаем отформатированную дату или плейсхолдер
     }; // Конец функции форматирования даты
-    const renderMessages = (messages) => { // Функция отрисовки строк таблицы
-      tableBody.innerHTML = ''; // Очищаем текущее содержимое тела таблицы
+
+    const resetGalleryStore = () => { // Очищаем хранилище галереи перед полной перерисовкой
+      if (galleryApi.resetGalleryStorePreserveActive) { // Проверяем наличие функции сброса
+        galleryApi.resetGalleryStorePreserveActive(); // Очищаем галерею, сохраняя активное состояние
+      } // Конец проверки наличия функции сброса
+    }; // Конец вспомогательной функции
+
+    const renderMessages = (messages, { append = false } = {}) => { // Функция отрисовки строк таблицы с поддержкой дописывания
+      if (!append) { // Если требуется полная перерисовка
+        tableBody.innerHTML = ''; // Очищаем тело таблицы
+        resetGalleryStore(); // Очищаем хранилище галереи
+        galleryCounter = 0; // Сбрасываем счетчик ключей галереи
+      } // Конец проверки режима перерисовки
       if (!Array.isArray(messages) || messages.length === 0) { // Проверяем наличие данных
-        const emptyRow = document.createElement('tr'); // Создаем строку для плейсхолдера
-        emptyRow.innerHTML = `<td colspan="{{ column_count }}" class="text-secondary">Нет данных</td>`; // Подставляем текст плейсхолдера
-        tableBody.appendChild(emptyRow); // Добавляем строку в таблицу
+        if (!append) { // Отрисовываем плейсхолдер только при полном режиме
+          const emptyRow = document.createElement('tr'); // Создаем строку для плейсхолдера
+          emptyRow.id = 'messages-placeholder'; // Добавляем идентификатор плейсхолдера
+          emptyRow.innerHTML = `<td colspan="{{ column_count }}" class="text-secondary">Нет данных</td>`; // Подставляем текст плейсхолдера
+          tableBody.appendChild(emptyRow); // Добавляем строку в таблицу
+        } // Конец проверки режима
         return; // Завершаем выполнение при отсутствии данных
       } // Конец проверки наличия данных
-      messages.forEach((msg, idx) => { // Перебираем все сообщения
-        const galleryKey = `entity-msg-${idx}`; // Формируем ключ галереи по индексу
+      if (append) { // Если добавляем новые записи к существующим
+        const placeholderRow = document.getElementById('messages-placeholder'); // Пытаемся найти плейсхолдер пустой таблицы
+        if (placeholderRow) { // Если плейсхолдер найден
+          placeholderRow.remove(); // Удаляем его перед добавлением настоящих данных
+        } // Конец проверки наличия плейсхолдера
+      } // Конец проверки режима добавления
+      messages.forEach((msg) => { // Перебираем все сообщения
+        const galleryKey = `entity-msg-${galleryCounter++}`; // Формируем уникальный ключ галереи
         const row = chatApi.buildEntityRow(msg, galleryApi, galleryKey, { // Сборка строки через единый модуль истории чата
           showChatColumn, // Передаем флаг столбца чата
           showSenderColumn, // Передаем флаг столбца отправителя
@@ -168,7 +196,61 @@
         tableBody.appendChild(row); // Добавляем готовую строку в таблицу
       }); // Конец перебора сообщений
     }; // Конец функции рендера
-    renderMessages(serverMessages); // Рисуем таблицу сразу после загрузки страницы
+
+    const buildQueryParams = (offsetValue) => { // Формируем объект параметров для API
+      const params = { limit: pageSize, offset: offsetValue }; // Добавляем лимит и смещение
+      if (Number.isFinite(basePeerId)) { // Проверяем наличие фильтра чата
+        params.peer_id = basePeerId; // Добавляем peer_id в параметры
+      } // Конец проверки фильтра чата
+      if (Number.isFinite(baseFromId)) { // Проверяем наличие фильтра отправителя
+        params.from_id = baseFromId; // Добавляем from_id в параметры
+      } // Конец проверки фильтра отправителя
+      return params; // Возвращаем собранные параметры
+    }; // Конец функции формирования параметров
+
+    const fetchLogs = async (params) => { // Функция запроса логов с сервера
+      const searchParams = new URLSearchParams(params); // Формируем строку запроса
+      const response = await fetch(`/api/logs?${searchParams.toString()}`); // Выполняем запрос к API логов
+      const data = await response.json(); // Читаем JSON-ответ
+      return data.items || []; // Возвращаем список сообщений
+    }; // Конец функции запроса логов
+
+    const loadMoreMessages = async () => { // Функция подгрузки следующей страницы
+      if (isLoading || !hasMore) { // Проверяем, можно ли начинать загрузку
+        return; // Прерываем, если уже загружаем или данные закончились
+      } // Конец проверки возможности загрузки
+      isLoading = true; // Ставим флаг загрузки
+      try { // Блок попытки запроса
+        const params = buildQueryParams(currentOffset); // Формируем параметры запроса
+        const nextChunk = await fetchLogs(params); // Запрашиваем следующую страницу логов
+        if (Array.isArray(nextChunk) && nextChunk.length > 0) { // Проверяем, что пришли данные
+          renderMessages(nextChunk, { append: true }); // Добавляем новые строки в таблицу
+          currentOffset += nextChunk.length; // Увеличиваем смещение
+          hasMore = nextChunk.length === pageSize; // Обновляем флаг наличия данных
+        } else { // Если новые данные не пришли
+          hasMore = false; // Помечаем, что дальше загружать нечего
+        } // Конец проверки полученных данных
+      } catch (err) { // Обработка ошибок запроса
+        console.error('Не удалось подгрузить сообщения', err); // Пишем ошибку в консоль
+        hasMore = false; // Останавливаем дальнейшие попытки при ошибке
+      } finally { // Блок завершения
+        isLoading = false; // Сбрасываем флаг загрузки
+      } // Конец блока завершения
+    }; // Конец функции подгрузки
+
+    const handleScroll = () => { // Обработчик прокрутки страницы
+      const scrollPosition = window.scrollY + window.innerHeight; // Текущая позиция прокрутки
+      const threshold = document.documentElement.scrollHeight - 400; // Порог, при достижении которого начинаем подгрузку
+      if (scrollPosition >= threshold) { // Проверяем, достигнут ли порог
+        loadMoreMessages(); // Запускаем подгрузку следующей страницы
+      } // Конец проверки порога
+    }; // Конец обработчика прокрутки
+
+    renderMessages(serverMessages || [], { append: false }); // Рисуем стартовую таблицу сразу после загрузки страницы
+    window.addEventListener('scroll', handleScroll); // Подписываемся на прокрутку для бесконечной ленты
+    if (hasMore) { // Если есть данные для подгрузки
+      loadMoreMessages(); // Запрашиваем следующую страницу, чтобы лента была длиннее сразу
+    } // Конец проверки наличия следующих страниц
   </script> <!-- Конец скрипта -->
 </body> <!-- Конец тела -->
 </html> <!-- Конец документа -->
