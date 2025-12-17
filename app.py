@@ -314,6 +314,35 @@ class EventLogger:
             )
             self._connection.commit()  # Сохраняем изменения
 
+    def mark_message_deleted(self, message_id: Optional[int]) -> bool:
+        """Помечает записанное сообщение как удалённое по его VK ID."""
+
+        if not isinstance(message_id, int):  # Проверяем, что передан корректный числовой ID
+            return False  # Возвращаем, что обновление не выполнено
+        with self._lock:  # Оборачиваем обновление в блокировку для потокобезопасности
+            cursor = self._connection.cursor()  # Берём курсор для выполнения запросов
+            cursor.execute(  # Выбираем строки с указанным message_id только для событий типа message
+                "SELECT id, payload FROM events WHERE message_id = ? AND event_type = ?",
+                (message_id, "message"),
+            )
+            rows = cursor.fetchall()  # Читаем найденные записи
+            if not rows:  # Проверяем, есть ли что обновлять
+                return False  # Возвращаем отсутствие обновлений
+            for row in rows:  # Перебираем каждую подходящую запись
+                try:  # Пробуем распарсить payload строки
+                    payload = json.loads(row["payload"] or "{}") if isinstance(row, sqlite3.Row) else {}
+                except Exception:  # Если JSON некорректен
+                    payload = {}  # Используем пустой словарь, чтобы не падать
+                payload["deleted"] = True  # Сохраняем признак удаления
+                payload["was_deleted"] = True  # Дублируем признак для альтернативных проверок
+                payload["is_deleted"] = True  # Ставим явный флаг удаления
+                cursor.execute(  # Обновляем payload в базе для конкретной строки
+                    "UPDATE events SET payload = ? WHERE id = ?",
+                    (json.dumps(payload, ensure_ascii=False), row["id"]),
+                )
+            self._connection.commit()  # Фиксируем обновлённые данные
+            return True  # Сообщаем, что хотя бы одна запись была обновлена
+
     def clear_messages(self) -> None:
         with self._lock:  # Начинаем потокобезопасную операцию
             cursor = self._connection.cursor()  # Получаем курсор
@@ -686,6 +715,62 @@ class BotMonitor:
                 "Не удалось догрузить сообщение %s через conversation_message_id %s: %s", msg_id, conv_id, exc
             )  # Пишем отладочный лог
         return hydrated  # Возвращаем дополненное сообщение
+
+    def _resolve_message_id_by_conversation(self, peer_id: Optional[int], conversation_message_id: Optional[int]) -> Optional[int]:
+        """Пытается получить глобальный message_id по паре peer_id + conversation_message_id."""
+
+        if not isinstance(peer_id, int) or not isinstance(conversation_message_id, int):  # Проверяем корректность входных данных
+            return None  # Возвращаем None, если нельзя построить запрос
+        try:  # Пробуем запросить данные о сообщении через VK API
+            response = self.session.method(  # Делаем запрос по conversation_message_id
+                "messages.getByConversationMessageId",
+                {
+                    "peer_id": peer_id,  # Передаём идентификатор чата
+                    "conversation_message_ids": conversation_message_id,  # Передаём ID сообщения внутри переписки
+                    "group_id": self.group_id,  # Указываем ID группы для корректных прав
+                    "extended": 0,  # Дополнительные данные не нужны, берём только сообщение
+                },
+            )
+            items = response.get("items", []) if isinstance(response, dict) else []  # Извлекаем список сообщений из ответа
+            if not items:  # Проверяем, что ответ содержит данные
+                return None  # Возвращаем None, если ничего не нашли
+            first_item = items[0] if isinstance(items[0], dict) else {}  # Берём первое сообщение из списка
+            resolved_id = first_item.get("id") if isinstance(first_item.get("id"), int) else None  # Достаём глобальный ID
+            return resolved_id  # Возвращаем найденный ID или None
+        except Exception as exc:  # Ловим ошибки запроса к API
+            logger.debug(
+                "Не удалось разрешить message_id по conversation_message_id %s в peer %s: %s",
+                conversation_message_id,
+                peer_id,
+                exc,
+            )  # Пишем отладочный лог при неудаче
+            return None  # Возвращаем None при исключении
+
+    def _handle_deletion_event(self, event) -> bool:
+        """Обрабатывает событие удаления сообщения и возвращает, было ли оно обработано."""
+
+        candidate = None  # Подготавливаем контейнер для полезной нагрузки
+        if hasattr(event, "object") and isinstance(getattr(event, "object"), dict):  # Проверяем, что объект события — словарь
+            candidate = event.object  # Сохраняем словарь объекта
+        elif hasattr(event, "object") and hasattr(event.object, "message") and isinstance(event.object.message, dict):  # Проверяем сообщение внутри объекта
+            candidate = event.object.message  # Извлекаем словарь сообщения
+        if not isinstance(candidate, dict):  # Если полезная нагрузка не словарь
+            return False  # Завершаем без обработки
+        action_block = candidate.get("action") if isinstance(candidate.get("action"), dict) else {}  # Получаем блок action
+        action_type = action_block.get("type") if isinstance(action_block, dict) else None  # Читаем тип действия
+        if action_type not in ("chat_message_delete", "message_delete"):  # Проверяем, относится ли событие к удалению
+            return False  # Возвращаем, что событие не обработано
+        message_id = action_block.get("message_id") or candidate.get("id")  # Пытаемся получить глобальный ID сообщения
+        peer_id = candidate.get("peer_id") or action_block.get("peer_id")  # Извлекаем peer_id из события
+        conversation_message_id = action_block.get("conversation_message_id") or candidate.get("conversation_message_id")  # Достаём ID сообщения в переписке
+        if not isinstance(message_id, int):  # Если глобальный ID не получен
+            message_id = self._resolve_message_id_by_conversation(peer_id, conversation_message_id)  # Пробуем вычислить его по переписке
+        updated = self.event_logger.mark_message_deleted(message_id) if message_id is not None else False  # Пытаемся обновить запись в базе
+        if updated:  # Проверяем, удалось ли обновить хотя бы одну строку
+            logger.info("Пометили сообщение %s как удалённое", message_id)  # Пишем информационный лог
+        else:  # Если обновить не удалось
+            logger.warning("Не нашли сообщение %s для пометки удаления", message_id)  # Логируем предупреждение
+        return updated  # Возвращаем, было ли событие обработано
 
     def _sanitize_filename(self, name: str, fallback: str) -> str:
         cleaned = "".join(ch for ch in name if ch.isalnum() or ch in ("-", "_", "."))  # Оставляем буквы, цифры и безопасные символы
@@ -1079,6 +1164,8 @@ class BotMonitor:
         while not self._stop_event.is_set():  # Цикл до получения сигнала остановки
             try:
                 for event in longpoll.listen():  # Перебираем входящие события VK
+                    if self._handle_deletion_event(event):  # Проверяем, является ли событие удалением сообщения
+                        continue  # Переходим к следующему событию, чтобы не считать его новым сообщением
                     if event.type == VkBotEventType.MESSAGE_NEW:  # Если это новое сообщение
                         message = event.object.message  # Извлекаем тело сообщения
                         message = self._hydrate_message_details(message)  # Догружаем полную версию сообщения через API
