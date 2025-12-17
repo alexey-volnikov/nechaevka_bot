@@ -185,6 +185,7 @@
   </div> <!-- Конец контейнера -->
 
   <script src="{{ url_for('static', filename='js/gallery.js') }}"></script> <!-- Подключаем общий скрипт галереи -->
+  <script src="{{ url_for('static', filename='js/chat-history.js') }}"></script> <!-- Подключаем единый модуль истории чата -->
   <script> // Начало скрипта форматирования времени
     const timeCells = document.querySelectorAll('[data-time]'); // Находим все элементы с датами
     const formatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }); // Настраиваем формат локального времени
@@ -193,21 +194,10 @@
       const parsed = iso ? new Date(iso) : null; // Парсим дату
       cell.textContent = parsed && !Number.isNaN(parsed.valueOf()) ? formatter.format(parsed) : '—'; // Подставляем форматированное значение
     }); // Конец цикла
-
     const galleryApi = window.galleryBridge || {}; // Подготавливаем общий API галереи
+    const chatApi = window.chatHistory || {}; // Подготавливаем единый модуль истории чата
     const serverMessages = {{ payload.messages | tojson }}; // Забираем сообщения с вложениями из шаблона
-    function registerEntityGalleries() { // Регистрируем галереи для всех сообщений
-      if (!Array.isArray(serverMessages)) { // Проверяем формат входных данных
-        return; // Выходим, если данных нет
-      } // Конец проверки формата
-      serverMessages.forEach((msg, idx) => { // Перебираем сообщения
-        const galleryKey = `entity-msg-${idx}`; // Формируем ключ галереи по индексу
-        if (galleryApi.registerMessageGallery) { // Проверяем наличие функции регистрации
-          galleryApi.registerMessageGallery(msg, galleryKey); // Регистрируем вложения через общий модуль
-        } // Конец проверки функции регистрации
-      }); // Конец цикла сообщений
-    } // Конец функции регистрации галерей
-    registerEntityGalleries(); // Запускаем регистрацию после загрузки страницы
+    chatApi.registerEntityGalleries(serverMessages, galleryApi); // Регистрируем вложения через общий модуль истории чата
   </script> <!-- Конец скрипта -->
 </body> <!-- Конец тела -->
 </html> <!-- Конец документа -->
