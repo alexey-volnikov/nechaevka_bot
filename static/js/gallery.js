@@ -242,6 +242,19 @@
     if (!att || typeof att !== 'object') {
       return null; // Возвращаем null при ошибке формата
     } // Завершаем проверку
+    // Отдельно обрабатываем стикеры по их глобальному ID
+    if (att.type === 'sticker') {
+      // Считываем блок стикера для извлечения идентификатора
+      const stickerBlock = att.sticker && typeof att.sticker === 'object' ? att.sticker : {}; // Берём блок стикера или пустой объект
+      // Пытаемся получить sticker_id из блока или верхнего уровня
+      const stickerId =
+        (stickerBlock.sticker_id !== undefined ? stickerBlock.sticker_id : null) ||
+        (att.sticker_id !== undefined ? att.sticker_id : null); // Берём ID стикера из разных полей
+      // Возвращаем сигнатуру по типу и ID, если он найден
+      if (stickerId !== null) {
+        return `sticker:${stickerId}`; // Формируем сигнатуру по ID стикера
+      } // Завершаем ветку стикера
+    } // Завершаем проверку типа стикера
     // Определяем тип вложения из явного поля или вложенных структур
     const type = att.type || (att.photo ? 'photo' : att.video ? 'video' : att.doc ? 'doc' : null); // Ищем тип в известных вложениях
     // Достаём вложенный объект по типу, если он есть
@@ -265,6 +278,37 @@
       return null; // Возвращаем null при ошибке сериализации
     } // Завершаем обработку исключений
   } // Конец функции формирования сигнатуры
+  // Удаляем дублирующиеся стикеры по их сигнатурам
+  function deduplicateStickers(list) {
+    // Готовим результат как пустой массив
+    const result = []; // Итоговый список без дублей
+    // Проверяем, что входные данные — массив
+    if (!Array.isArray(list)) {
+      return result; // Возвращаем пустой список при некорректном формате
+    } // Завершаем проверку формата
+    // Создаём набор для уникальных сигнатур
+    const seen = new Set(); // Хранилище уже встреченных ключей
+    // Перебираем элементы исходного списка
+    list.forEach((att) => {
+      // Проверяем, что элемент корректный и является стикером
+      if (!att || typeof att !== 'object' || att.type !== 'sticker') {
+        return; // Пропускаем неподходящие элементы
+      } // Завершаем проверку элемента
+      // Рассчитываем сигнатуру вложения
+      const signature = attachmentSignature(att); // Получаем сигнатуру стикера
+      // Проверяем, встречалась ли сигнатура раньше
+      if (signature && seen.has(signature)) {
+        return; // Пропускаем дубликат
+      } // Завершаем проверку дубля
+      // Добавляем сигнатуру в набор для будущих проверок
+      if (signature) {
+        seen.add(signature); // Сохраняем сигнатуру
+      } // Завершаем добавление сигнатуры
+      // Добавляем стикер в итоговый список
+      result.push(att); // Сохраняем уникальный элемент
+    }); // Завершаем перебор списка
+    return result; // Возвращаем список без повторяющихся стикеров
+  } // Конец функции удаления дублей стикеров
   // Проверяем, находится ли вложение в состоянии ожидания или ошибки загрузки
   function isPendingAttachment(att) {
     // Убеждаемся, что передан объект
@@ -845,7 +889,8 @@
     } // Завершаем проверку отсутствия данных
     // Подготавливаем списки вложений для стикеров и остальных типов
     const safeAttachments = Array.isArray(attachments) ? attachments : []; // Гарантируем массив вложений
-    const stickerAttachments = safeAttachments.filter((att) => att && att.type === 'sticker'); // Выделяем стикеры
+    const stickerAttachmentsRaw = safeAttachments.filter((att) => att && att.type === 'sticker'); // Выделяем стикеры
+    const stickerAttachments = deduplicateStickers(stickerAttachmentsRaw); // Убираем дубли стикеров по ID
     const regularAttachments = safeAttachments.filter((att) => !att || att.type !== 'sticker'); // Остальные вложения
     // Считаем количество вложений, которые еще не готовы
     const pendingTotal = countPendingAttachments(attachments) + countPendingCopyHistory(copyHistory); // Ожидающие вложения
