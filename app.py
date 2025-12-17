@@ -1632,6 +1632,18 @@ def build_dashboard_app(
         except Exception:  # При ошибке парсинга
             raw_payload = {}  # Возвращаем пустой словарь, чтобы не ронять страницу
         reply_payload = raw_payload.get("reply_message") if isinstance(raw_payload, dict) else None  # Получаем блок ответа из payload
+        deleted_flag = False  # Флаг, указывающий, что сообщение было удалено пользователем или системой
+        if isinstance(raw_payload, dict):  # Проверяем, что payload представлен словарем
+            deletion_candidates = [  # Формируем список полей, которые могут означать удаление сообщения
+                raw_payload.get("deleted"),  # Поле deleted из VK API
+                raw_payload.get("was_deleted"),  # Альтернативное поле was_deleted
+                raw_payload.get("is_deleted"),  # Возможное поле is_deleted из других источников
+            ]  # Завершаем список кандидатов на признак удаления
+            deleted_flag = any(bool(value) for value in deletion_candidates)  # Вычисляем, установлен ли хотя бы один признак удаления
+            action_block = raw_payload.get("action") if isinstance(raw_payload.get("action"), dict) else {}  # Извлекаем блок action при наличии
+            action_type = action_block.get("type") if isinstance(action_block, dict) else None  # Читаем тип действия из блока action
+            if action_type in ("chat_message_delete", "message_delete"):  # Проверяем, относится ли действие к удалению сообщения
+                deleted_flag = True  # Фиксируем, что сообщение нужно считать удаленным
         reply_attachments_raw = row.get("reply_message_attachments") or "[]"  # Берем текст вложений ответа или пустой список
         try:  # Пытаемся распарсить вложения ответа
             reply_attachments = enrich_attachments_list(json.loads(reply_attachments_raw))  # Преобразуем вложения в структурированный список
@@ -1677,6 +1689,7 @@ def build_dashboard_app(
             "copy_history": copy_history,  # Репосты с вложениями
             "attachments_total": len(attachments) + count_copy_history_attachments(copy_history),  # Общее количество вложений в сообщении и репостах
             "payload": raw_payload,  # Сырой payload
+            "is_deleted": deleted_flag,  # Флаг, что сообщение удалено и должно подсвечиваться
         }  # Конец словаря лога
 
     @app.route("/")
