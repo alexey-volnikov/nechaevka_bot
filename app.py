@@ -633,6 +633,8 @@ class BotMonitor:
         self.peer_cache: Dict[int, Dict[str, Optional[str]]] = {}  # Кэш профилей чатов по peer_id
         self.attachments_dir = ATTACHMENTS_ROOT  # Используем общую директорию для вложений
         self.attachments_dir.mkdir(parents=True, exist_ok=True)  # Создаем директории для вложений при инициализации
+        self.sticker_cache_dir = self.attachments_dir / "stickers"  # Директория для кэша стикеров по их ID
+        self.sticker_cache_dir.mkdir(parents=True, exist_ok=True)  # Создаем папку кэша стикеров, если её нет
 
     def _hydrate_message_details(self, message: Dict) -> Dict:  # Подгружает полную версию сообщения по ID через API
         hydrated = dict(message) if isinstance(message, dict) else {}  # Копируем исходное сообщение в рабочий словарь
@@ -817,6 +819,64 @@ class BotMonitor:
         target_folder.mkdir(parents=True, exist_ok=True)  # Создаем вложенные директории
         return target_folder / base_name  # Возвращаем полный путь до файла
 
+    def _pick_sticker_image_url(self, sticker_block: Dict) -> Optional[str]:
+        if not isinstance(sticker_block, dict):  # Проверяем, что блок стикера — словарь
+            return None  # Возвращаем пустое значение при неверном формате
+        images = []  # Подготавливаем список вариантов изображений
+        raw_images = sticker_block.get("images") if isinstance(sticker_block.get("images"), list) else []  # Забираем список обычных изображений
+        raw_bg = sticker_block.get("images_with_background") if isinstance(sticker_block.get("images_with_background"), list) else []  # Забираем список изображений с фоном
+        images.extend(raw_images)  # Добавляем обычные варианты в общий список
+        images.extend(raw_bg)  # Добавляем варианты с фоном в общий список
+        if not images:  # Проверяем, что хотя бы один вариант найден
+            return None  # Возвращаем пустое значение при отсутствии ссылок
+        sorted_images = sorted(images, key=lambda item: (item.get("width", 0) or 0) * (item.get("height", 0) or 0), reverse=True)  # Сортируем по площади изображения
+        best = sorted_images[0] if sorted_images else None  # Берем самый крупный вариант
+        return best.get("url") if isinstance(best, dict) else None  # Возвращаем ссылку на лучший вариант
+
+    def _get_cached_sticker_file(self, sticker_id: Optional[int]) -> Optional[Path]:
+        if not isinstance(sticker_id, int):  # Проверяем корректность идентификатора стикера
+            return None  # Возвращаем пустое значение при неверном ID
+        for candidate in self.sticker_cache_dir.glob(f"sticker_{sticker_id}.*"):  # Перебираем файлы подходящего шаблона
+            if candidate.exists():  # Проверяем, что файл действительно существует
+                return candidate  # Возвращаем найденный путь к файлу
+        return None  # Возвращаем пустое значение, если кэш не найден
+
+    def _sticker_fallback_urls(self, sticker_id: Optional[int]) -> List[str]:
+        if not isinstance(sticker_id, int):  # Проверяем, что ID стикера корректный
+            return []  # Возвращаем пустой список при отсутствии ID
+        base_sizes = [512, 256, 128]  # Задаем список размеров, которые попробуем скачать
+        urls: List[str] = []  # Подготавливаем список кандидатов
+        for size in base_sizes:  # Перебираем каждый размер
+            urls.append(f"https://vk.com/sticker/{sticker_id}-{size}-{size}-0")  # Добавляем ссылку на PNG без фона
+            urls.append(f"https://vk.com/sticker/{sticker_id}-{size}-{size}-1")  # Добавляем ссылку на PNG с фоном
+        return urls  # Возвращаем список кандидатов для загрузки
+
+    def _build_sticker_cache_path(self, sticker_id: int, source_url: Optional[str]) -> Path:
+        parsed = urlparse(source_url or "")  # Парсим URL, даже если он пустой
+        suffix = Path(parsed.path).suffix  # Пытаемся извлечь расширение файла
+        safe_suffix = suffix if suffix else ".webp"  # Подставляем расширение WebP по умолчанию
+        filename = f"sticker_{sticker_id}{safe_suffix}"  # Формируем имя файла стикера
+        return self.sticker_cache_dir / filename  # Возвращаем полный путь к файлу в кэше
+
+    def _cache_sticker_image(self, sticker_id: Optional[int], primary_url: Optional[str]) -> tuple[Optional[Path], Optional[str]]:
+        if not isinstance(sticker_id, int):  # Проверяем корректность ID перед попыткой кэширования
+            return None, "Стикер без sticker_id нельзя сохранить в кэш"  # Сообщаем причину невозможности кэширования
+        cached = self._get_cached_sticker_file(sticker_id)  # Пытаемся найти готовый кэш
+        if cached:  # Проверяем, найден ли файл
+            return cached, None  # Возвращаем путь без ошибки
+        candidates: List[str] = []  # Подготавливаем список ссылок для скачивания
+        if primary_url:  # Проверяем, передана ли основная ссылка
+            candidates.append(primary_url)  # Добавляем основную ссылку первой
+        candidates.extend(self._sticker_fallback_urls(sticker_id))  # Добавляем обходные ссылки по ID стикера
+        error_reason = None  # Подготавливаем переменную для текста ошибки
+        for candidate_url in candidates:  # Перебираем все кандидаты
+            target_path = self._build_sticker_cache_path(sticker_id, candidate_url)  # Строим путь сохранения для конкретной ссылки
+            saved_path, download_error, _status_code = self._download_file(candidate_url, target_path)  # Пытаемся скачать файл
+            if saved_path:  # Проверяем, удалось ли сохранить файл
+                return saved_path, None  # Возвращаем путь к скачанному файлу и отсутствие ошибки
+            error_reason = download_error or f"Не удалось скачать стикер по ссылке {candidate_url}"  # Сохраняем последнюю причину
+        return None, error_reason or "Нет доступных ссылок для скачивания стикера"  # Возвращаем итоговую ошибку при неудаче
+
     def _download_file(self, url: str, target_path: Path) -> tuple[Optional[Path], Optional[str], Optional[int]]:
         try:  # Пробуем скачать файл
             response = requests.get(url, timeout=30, stream=True)  # Выполняем HTTP-запрос с таймаутом
@@ -911,12 +971,26 @@ class BotMonitor:
     def _normalize_attachment(self, attachment: Dict, peer_id: Optional[int], message_id: Optional[int]) -> Dict:
         normalized = dict(attachment) if isinstance(attachment, dict) else {}  # Копируем вложение, чтобы не трогать оригинал
         att_type = normalized.get("type")  # Получаем тип вложения
-        download_url = self._pick_attachment_url(normalized)  # Пытаемся извлечь прямую ссылку
+        sticker_block = normalized.get("sticker") if isinstance(normalized.get("sticker"), dict) else {}  # Извлекаем блок стикера при наличии
+        download_url = self._pick_sticker_image_url(sticker_block) if att_type == "sticker" else self._pick_attachment_url(normalized)  # Определяем ссылку скачивания с учетом стикеров
         normalized["local_path"] = None  # Подготавливаем поле для пути
         normalized["download_url"] = download_url  # Сохраняем URL в явном виде
         normalized["transcript"] = normalized.get("transcript")  # Резерв для будущей расшифровки аудио
         normalized["download_state"] = "pending" if download_url else "missing"  # Помечаем статус скачивания по умолчанию
         normalized["download_error"] = None  # Подготавливаем поле для сообщения об ошибке скачивания
+        if att_type == "sticker":  # Обрабатываем особый случай стикеров
+            sticker_id = sticker_block.get("sticker_id") if isinstance(sticker_block, dict) else None  # Получаем sticker_id для кэша
+            cached_path, cache_error = self._cache_sticker_image(sticker_id, download_url)  # Пытаемся найти или скачать стикер в кэш
+            if cached_path:  # Проверяем, что файл появился в кэше
+                normalized["local_path"] = str(cached_path)  # Сохраняем путь к кэшированному стикеру
+                normalized["download_state"] = "ready"  # Отмечаем успешную загрузку стикера
+                normalized["download_error"] = None  # Убираем возможные ошибки
+                return normalized  # Возвращаем вложение сразу, не повторяя загрузку
+            if cache_error and not download_url:  # Проверяем, что не удалось скачать и нет ссылок для повтора
+                normalized["download_state"] = "failed"  # Помечаем неуспешную попытку
+                normalized["download_error"] = cache_error  # Сохраняем причину сбоя
+                log_service_event(422, cache_error)  # Фиксируем проблему в сервисных логах
+                return normalized  # Возвращаем вложение с ошибкой
         video_block = normalized.get("video") if isinstance(normalized.get("video"), dict) else {}  # Извлекаем блок видео при наличии
         player_fallback = self._resolve_video_player_url(video_block) if att_type == "video" else None  # Пытаемся достать ссылку на плеер из payload или через API
         if not download_url and att_type == "video" and player_fallback:  # Проверяем, что mp4 не найден, но есть ссылка на плеер
