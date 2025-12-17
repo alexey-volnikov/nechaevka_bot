@@ -818,11 +818,16 @@
     countTypesInCopyHistory(copyHistory, typeCounters); // Добавляем типы из репостов
     // Формируем человекочитаемое описание типов с эмодзи
     const typeLabels = Object.entries(typeCounters).map(([key, value]) => {
+      // Пропускаем стикеры, чтобы не дублировать подпись при отдельном превью
+      if (key === 'sticker') { // Проверяем, что тип — стикер
+        return null; // Возвращаем null, чтобы убрать тип из отображения
+      } // Конец проверки типа
       const label = buildTypeLabel(key); // Получаем подпись с эмодзи для типа
       return value > 1 ? `${label} ×${value}` : label; // Добавляем множитель при необходимости
     }); // Завершаем сборку описаний типов
     // Формируем текст бейджа с типами и количеством
-    const label = typeLabels.length ? typeLabels.join(' • ') : `📎 ${total}`; // Текст скрепки с перечнем типов
+    const filteredLabels = typeLabels.filter((value) => Boolean(value)); // Убираем пропущенные типы (стикеры)
+    const label = filteredLabels.length ? filteredLabels.join(' • ') : `📎 ${total}`; // Текст скрепки с перечнем типов
     // Если ссылка найдена, делаем бейдж кликабельным
     if (previewLink) {
       return `<a class="attachment-pill ${className}" href="${previewLink}" data-gallery-key="${galleryKey}" data-gallery-url="${previewLink}" target="_blank" rel="noopener noreferrer">${label}</a>`; // Возвращаем кликабельный бейдж
@@ -838,6 +843,10 @@
     if (!hasAttachments && !hasCopy) {
       return '<span class="text-secondary">—</span>'; // Возвращаем тире
     } // Завершаем проверку отсутствия данных
+    // Подготавливаем списки вложений для стикеров и остальных типов
+    const safeAttachments = Array.isArray(attachments) ? attachments : []; // Гарантируем массив вложений
+    const stickerAttachments = safeAttachments.filter((att) => att && att.type === 'sticker'); // Выделяем стикеры
+    const regularAttachments = safeAttachments.filter((att) => !att || att.type !== 'sticker'); // Остальные вложения
     // Считаем количество вложений, которые еще не готовы
     const pendingTotal = countPendingAttachments(attachments) + countPendingCopyHistory(copyHistory); // Ожидающие вложения
     // Считаем количество вложений, которые не удалось сохранить
@@ -857,10 +866,14 @@
       ? `<span class="attachment-pill attachment-failed" data-gallery-key="${galleryKey}">⚠️ Вложения не сохранились (${failedTotal}) — ${failedReasonsText}</span>`
       : ''; // Готовим бейдж ошибки или пустую строку
     // Строим бейдж со скрепкой и количеством
-    const summary = buildAttachmentSummary(attachments, copyHistory, galleryKey); // HTML скрепки
+    const summary = buildAttachmentSummary(regularAttachments, copyHistory, galleryKey); // HTML скрепки без стикеров
+    // Рисуем отдельную ленту стикеров с миниатюрами и ID
+    const stickerList = Array.isArray(stickerAttachments) && stickerAttachments.length // Проверяем, есть ли хотя бы один стикер
+      ? renderAttachmentList(stickerAttachments, galleryKey, 'Стикер') // Рендерим ленту стикеров
+      : ''; // Формируем HTML стикеров или пустую строку
     // Готовим блок репостов при наличии
     const copyBlock = hasCopy ? renderCopyHistory(copyHistory, galleryKey) : ''; // HTML блоков репостов
-    return `<div class="content-cell">${pendingBadge}${failedBadge}${summary}${copyBlock}</div>`; // Возвращаем итоговую разметку ячейки с индикаторами
+    return `<div class="content-cell">${pendingBadge}${failedBadge}${stickerList}${summary}${copyBlock}</div>`; // Возвращаем итоговую разметку ячейки с индикаторами
   } // Конец функции сборки ячейки
   // Отрисовываем полосу миниатюр галереи
   function renderGalleryStrip(galleryData) {
