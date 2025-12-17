@@ -696,6 +696,32 @@
       }, // Завершаем объект метаданных
     }; // Завершаем объект галереи
   } // Конец функции регистрации произвольной галереи
+  // Подбираем ссылку на миниатюру стикера для отображения в истории
+  function pickStickerPreview(att) {
+    // Проверяем корректность входного объекта
+    if (!att || typeof att !== 'object') {
+      return null; // Возвращаем null, если данные некорректны
+    } // Завершаем проверку объекта
+    // Извлекаем блок стикера
+    const stickerBlock = att.sticker && typeof att.sticker === 'object' ? att.sticker : {}; // Берём данные стикера или пустой объект
+    // Получаем список изображений стикера
+    const rawImages = Array.isArray(stickerBlock.images) ? [...stickerBlock.images] : []; // Копируем массив изображений без фона
+    // Получаем список изображений с фоном
+    const rawBackground = Array.isArray(stickerBlock.images_with_background) ? [...stickerBlock.images_with_background] : []; // Копируем массив изображений с фоном
+    // Объединяем оба списка
+    const combined = [...rawImages, ...rawBackground].filter((img) => img && typeof img === 'object'); // Собираем доступные варианты изображений
+    // Если изображения есть
+    if (combined.length) {
+      // Сортируем варианты по возрастанию ширины для компактного превью
+      const sorted = combined.sort((a, b) => (a.width || a.height || 0) - (b.width || b.height || 0)); // Сортируем изображения от меньшего к большему
+      // Берём первую (самую компактную) картинку
+      const smallest = sorted[0]; // Минимальный вариант изображения
+      // Возвращаем ссылку на миниатюру
+      return smallest.url || smallest.src || null; // Предпочитаем url, иначе src
+    } // Завершаем ветку с изображениями
+    // Если изображений нет, пробуем использовать общий резолвер ссылки
+    return normalizeAttachmentLink(att); // Возвращаем ссылку, если она есть в других полях
+  } // Конец функции выбора миниатюры стикера
   // Собираем HTML бейджа вложения
   function buildAttachmentBadge(att, galleryKey, originLabel) {
     // Определяем тип вложения
@@ -710,10 +736,32 @@
     const shortCaption = caption ? caption.slice(0, 60) : ''; // Короткая подпись
     // Подбираем CSS-класс для бейджа
     const className = pickAttachmentClass(type); // Класс подсветки
-    // Формируем текст бейджа
-    const text = shortCaption ? `${readableType}: ${shortCaption}` : readableType; // Текст бейджа
     // Готовим атрибут источника для открытия из конкретного блока
     const originAttr = originLabel ? ` data-gallery-origin="${originLabel}"` : ''; // Атрибут источника
+    // Если это стикер, формируем особое отображение с миниатюрой и полным ID
+    if (type === 'sticker') {
+      // Пытаемся определить sticker_id из блока стикера или верхнего уровня
+      const stickerId =
+        (att.sticker && typeof att.sticker === 'object' && att.sticker.sticker_id !== undefined ? att.sticker.sticker_id : null) ||
+        (att.sticker_id !== undefined ? att.sticker_id : null); // Получаем ID стикера из разных полей
+      // Готовим подпись ID
+      const stickerLabel = stickerId !== null ? `ID: ${stickerId}` : 'ID неизвестен'; // Человекочитаемая подпись ID стикера
+      // Подбираем миниатюру для стикера
+      const thumbUrl = pickStickerPreview(att); // Ссылка на миниатюру стикера
+      // Формируем HTML миниатюры, если ссылка есть
+      const thumbHtml = thumbUrl
+        ? `<img src="${thumbUrl}" alt="Стикер ${stickerLabel}" loading="lazy" style="height: 56px; width: auto; border-radius: 4px; background: rgba(255, 255, 255, 0.06);" />`
+        : ''; // Рисуем картинку или оставляем пустую строку
+      // Собираем контент бейджа с миниатюрой и ID
+      const stickerContent = `<span class="d-inline-flex align-items-center gap-2">${thumbHtml}<span>${stickerLabel}</span></span>`; // Разметка бейджа стикера
+      // Если есть ссылка на стикер, делаем бейдж кликабельным
+      if (thumbUrl) {
+        return `<a class="attachment-pill ${className}" href="${thumbUrl}" data-gallery-key="${galleryKey}"${originAttr} data-gallery-url="${thumbUrl}" target="_blank" rel="noopener noreferrer">${stickerContent}</a>`; // Возвращаем кликабельный бейдж с миниатюрой
+      } // Завершаем ветку со ссылкой на стикер
+      return `<span class="attachment-pill ${className}" data-gallery-key="${galleryKey}"${originAttr}>${stickerContent}</span>`; // Возвращаем статичный бейдж без ссылки
+    } // Завершаем ветку рендера стикеров
+    // Формируем текст бейджа
+    const text = shortCaption ? `${readableType}: ${shortCaption}` : readableType; // Текст бейджа
     // Если есть ссылка, делаем кликабельный бейдж
     if (href) {
       return `<a class="attachment-pill ${className}" href="${href}" data-gallery-key="${galleryKey}"${originAttr} data-gallery-url="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`; // Возвращаем кликабельный бейдж
