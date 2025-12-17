@@ -1397,6 +1397,9 @@ def build_dashboard_app(
         summary = event_logger.summarize_peer(peer_id)  # Получаем сводку по чату из базы
         if summary and summary.get("last_message_time"):  # Проверяем наличие временной метки
             summary["last_message_time"] = localize_iso(summary.get("last_message_time"))  # Переводим время в локальную зону
+        if summary is not None:  # Убеждаемся, что словарь сводки существует
+            summary.setdefault("peer_id", peer_id)  # Добавляем ID чата для единообразия в шаблоне
+            summary.setdefault("from_id", None)  # Явно прописываем пустой from_id, чтобы избежать undefined в JavaScript
         messages = [
             serialize_log(row)
             for row in event_logger.fetch_messages(peer_id=peer_id, limit=limit, offset=offset)
@@ -1409,6 +1412,9 @@ def build_dashboard_app(
         summary = event_logger.summarize_user(user_id)  # Получаем сводку по отправителю
         if summary and summary.get("last_message_time"):  # Проверяем, есть ли время последнего сообщения
             summary["last_message_time"] = localize_iso(summary.get("last_message_time"))  # Конвертируем время в локальную зону
+        if summary is not None:  # Убеждаемся, что сводка существует
+            summary.setdefault("from_id", user_id)  # Явно прописываем ID отправителя для фронтенда
+            summary.setdefault("peer_id", peer_id)  # Добавляем текущий peer_id (или None), чтобы шаблон не получал undefined
         messages = [
             serialize_log(row)
             for row in event_logger.fetch_messages_by_user(user_id=user_id, limit=limit, peer_id=peer_id, offset=offset)

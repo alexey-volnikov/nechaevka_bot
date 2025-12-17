@@ -146,8 +146,8 @@
     const showSenderColumn = {{ 'true' if show_sender_column else 'false' }}; // Флаг отображения столбца отправителя
     const formatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' }); // Настраиваем формат локального времени
     const pageSize = {{ page_size | tojson }}; // Размер страницы для постраничной подгрузки
-    const basePeerId = {{ payload.summary.peer_id | tojson }}; // Фильтр по чату для API
-    const baseFromId = {{ payload.summary.from_id | tojson }}; // Фильтр по отправителю для API
+    const basePeerId = {{ payload.summary.peer_id | default(None) | tojson }}; // Фильтр по чату для API
+    const baseFromId = {{ payload.summary.from_id | default(None) | tojson }}; // Фильтр по отправителю для API
     let galleryCounter = 0; // Счетчик ключей галереи для стабильных идентификаторов
     let currentOffset = Array.isArray(serverMessages) ? serverMessages.length : 0; // Текущее смещение для следующей подгрузки
     let isLoading = false; // Флаг состояния загрузки
