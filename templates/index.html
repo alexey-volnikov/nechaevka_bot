@@ -270,7 +270,6 @@
     const timeRangeSelect = document.getElementById('time-range-select'); // Селектор выбора диапазона времени
     const galleryApi = window.galleryBridge || {}; // Получаем общий API галереи из подключенного файла
     const chatApi = window.chatHistory || {}; // Получаем единый модуль истории чата
-    let galleryCounter = 0; // Счетчик для генерации уникальных ключей галерей
     let currentPeer = ''; // Текущий выбранный peer_id
     let selectedRange = Number(initialStats?.range_minutes ?? 60); // Текущий выбранный диапазон минут
 
@@ -329,36 +328,181 @@
       groupMembersEl.textContent = data.members_count ? `${data.members_count} участников` : 'Участники: —'; // Отображаем участников
     } // Конец функции
 
+    const pageSize = {{ page_size | tojson }}; // Размер страницы для подгрузки логов
+    const serverMessages = {{ initial_logs | tojson }}; // Стартовый набор логов с сервера
     let renderedMessageKeys = new Set(); // Хранилище ключей уже отрисованных сообщений
+    let messagesStore = Array.isArray(serverMessages) ? [...serverMessages] : []; // Локальное хранилище сообщений
+    let messageGalleryCounter = 0; // Счетчик ключей галереи для сообщений
+    let currentOffset = messagesStore.length; // Текущее смещение для следующей страницы
+    let hasMore = messagesStore.length === pageSize; // Флаг наличия следующих страниц для подгрузки
+    let isLoadingOlder = false; // Флаг процесса загрузки старых сообщений
+    let isFetchingLatest = false; // Флаг процесса загрузки новых сообщений
 
-    function renderMessages(messages) { // Функция отрисовки сообщений
-      messagesBody.innerHTML = ''; // Очищаем тело таблицы
-      if (galleryApi.resetGalleryStorePreserveActive) { // Проверяем наличие функции очистки галереи
-        galleryApi.resetGalleryStorePreserveActive(); // Сохраняем открытую галерею и очищаем остальное
-      } // Конец проверки наличия функции очистки
-      galleryCounter = 0; // Обнуляем счетчик ключей
-      const nextRenderedKeys = new Set(); // Готовим новое множество ключей для сохранения состояния
-      if (!messages.length) { // Если пусто
-        messagesBody.innerHTML = '<tr><td colspan="5" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
-        renderedMessageKeys = nextRenderedKeys; // Сбрасываем множество ключей при отсутствии сообщений
-        return; // Выходим
-      } // Конец проверки пустоты
-      const sortedMessages = [...messages]; // Копируем массив в порядке, где сервер уже отдает новые записи первыми
-      sortedMessages.forEach((msg) => { // Перебираем сообщения от новых к старым без инверсии порядка
-        const messageKeyParts = [ // Готовим части ключа сообщения
-          msg.id ?? 'unknown', // Добавляем основной ID, если есть
-          msg.peer_id ?? 'no-peer', // Добавляем идентификатор чата
-          msg.date ?? msg.timestamp ?? 'no-time', // Добавляем время, если доступно
-          msg.text || '', // Добавляем текст для уникальности без вложений
-        ]; // Завершаем сборку частей ключа
-        const messageKey = messageKeyParts.join('::'); // Склеиваем части ключа в строку
-        nextRenderedKeys.add(messageKey); // Сохраняем ключ в новое множество для будущих сравнений
-        const galleryKey = `msg-${msg.id ?? 'local'}-${galleryCounter++}`; // Формируем уникальный ключ для галереи
-        const row = chatApi.buildDashboardRow(msg, galleryApi, galleryKey, { isNew: !renderedMessageKeys.has(messageKey) }); // Строим строку через единый модуль истории чата
-        messagesBody.appendChild(row); // Добавляем строку в таблицу
-      }); // Конец цикла
-      renderedMessageKeys = nextRenderedKeys; // Обновляем сохраненное множество после перерисовки
-    } // Конец функции
+    const resetGalleryStore = () => { // Унифицированная очистка галереи перед полной перерисовкой
+      if (galleryApi.resetGalleryStorePreserveActive) { // Проверяем наличие функции сброса в общем модуле галереи
+        galleryApi.resetGalleryStorePreserveActive(); // Сбрасываем галерею, сохраняя открытое состояние
+      } // Конец проверки наличия функции
+    }; // Конец вспомогательной функции
+
+    const buildMessageKey = (msg) => { // Формируем уникальный ключ сообщения
+      const messageKeyParts = [ // Собираем части ключа
+        msg.id ?? 'unknown', // Добавляем ID записи лога
+        msg.peer_id ?? 'no-peer', // Добавляем идентификатор чата
+        msg.created_at ?? msg.date ?? msg.timestamp ?? 'no-time', // Добавляем время создания
+        msg.text || '', // Добавляем текст, чтобы различать записи без ID
+      ]; // Конец сборки частей ключа
+      return messageKeyParts.join('::'); // Склеиваем части в строку
+    }; // Конец функции формирования ключа
+
+    const ensurePlaceholder = () => { // Отрисовываем плейсхолдер при пустой таблице
+      const placeholderRow = document.getElementById('messages-placeholder'); // Ищем существующий плейсхолдер
+      if (placeholderRow) { // Если плейсхолдер уже есть
+        return; // Ничего не делаем
+      } // Конец проверки наличия
+      const row = document.createElement('tr'); // Создаем строку для плейсхолдера
+      row.id = 'messages-placeholder'; // Добавляем идентификатор
+      row.innerHTML = '<td colspan="5" class="text-secondary">Нет данных</td>'; // Заполняем текст плейсхолдера
+      messagesBody.appendChild(row); // Добавляем строку в таблицу
+    }; // Конец функции плейсхолдера
+
+    const clearPlaceholder = () => { // Удаляем плейсхолдер, если он есть
+      const placeholderRow = document.getElementById('messages-placeholder'); // Ищем строку плейсхолдера
+      if (placeholderRow) { // Если нашли
+        placeholderRow.remove(); // Удаляем строку
+      } // Конец проверки наличия
+    }; // Конец функции удаления плейсхолдера
+
+    const renderMessagesChunk = (messages, { mode = 'append' } = {}) => { // Рисуем часть сообщений с учетом режима
+      if (mode === 'replace') { // Если нужно полностью перерисовать таблицу
+        messagesBody.innerHTML = ''; // Полностью очищаем тело таблицы
+        resetGalleryStore(); // Сбрасываем состояние галереи
+        renderedMessageKeys.clear(); // Очищаем множество ключей
+        messageGalleryCounter = 0; // Обнуляем счетчик галереи
+      } // Конец проверки режима полной перерисовки
+      if (!Array.isArray(messages) || messages.length === 0) { // Если данных нет
+        if (mode === 'replace') { // Для режима полной перерисовки
+          ensurePlaceholder(); // Добавляем плейсхолдер
+        } // Конец проверки режима
+        return; // Завершаем выполнение
+      } // Конец проверки наличия данных
+      clearPlaceholder(); // Убираем плейсхолдер перед вставкой новых строк
+      const fragment = document.createDocumentFragment(); // Создаем фрагмент для батчевой вставки
+      messages.forEach((msg) => { // Перебираем все сообщения из порции
+        const messageKey = buildMessageKey(msg); // Формируем ключ текущего сообщения
+        if (renderedMessageKeys.has(messageKey)) { // Проверяем, не показывали ли его раньше
+          return; // Пропускаем дубли
+        } // Конец проверки дубля
+        renderedMessageKeys.add(messageKey); // Сохраняем ключ как отрисованный
+        const galleryKey = `msg-${msg.id ?? 'local'}-${messageGalleryCounter++}`; // Генерируем ключ для галереи
+        const row = chatApi.buildDashboardRow(msg, galleryApi, galleryKey, { isNew: mode === 'prepend' }); // Собираем строку через модуль истории
+        fragment.appendChild(row); // Добавляем строку в фрагмент
+      }); // Конец перебора порции
+      if (mode === 'prepend') { // Если нужно добавить новые строки сверху
+        messagesBody.prepend(fragment); // Вставляем фрагмент в начало таблицы
+      } else { // Иначе добавляем в конец
+        messagesBody.appendChild(fragment); // Вставляем фрагмент в конец таблицы
+      } // Конец проверки режима вставки
+    }; // Конец функции рендера порции
+
+    const loadOlderMessages = async () => { // Подгружаем старшие записи при прокрутке вниз
+      if (isLoadingOlder || !hasMore) { // Проверяем возможность загрузки
+        return; // Прерываем выполнение
+      } // Конец проверки флагов
+      isLoadingOlder = true; // Ставим флаг процесса загрузки
+      try { // Пытаемся запросить данные
+        const params = new URLSearchParams({ limit: pageSize, offset: currentOffset }); // Формируем параметры запроса
+        if (currentPeer) { // Если выбран фильтр чата
+          params.set('peer_id', currentPeer); // Добавляем peer_id
+        } // Конец проверки фильтра
+        const response = await fetch(`/api/logs?${params.toString()}`); // Выполняем запрос к API логов
+        const data = await response.json(); // Читаем JSON-ответ
+        const items = data.items || []; // Забираем массив сообщений
+        if (items.length) { // Если пришли данные
+          renderMessagesChunk(items, { mode: 'append' }); // Добавляем их в конец таблицы
+          messagesStore = messagesStore.concat(items); // Сохраняем порцию в локальное хранилище
+          currentOffset = renderedMessageKeys.size; // Обновляем смещение по количеству отрисованных записей
+          hasMore = items.length === pageSize; // Фиксируем, есть ли следующая страница
+        } else { // Если данных нет
+          hasMore = false; // Помечаем, что подгружать больше нечего
+        } // Конец проверки наличия данных
+      } catch (err) { // Обработка ошибок запроса
+        console.error('Не удалось подгрузить старые сообщения', err); // Пишем ошибку в консоль
+        hasMore = false; // Останавливаем попытки подгрузки
+      } finally { // Финальный блок
+        isLoadingOlder = false; // Сбрасываем флаг загрузки
+      } // Конец финального блока
+    }; // Конец функции подгрузки старых сообщений
+
+    const fetchLatestMessages = async () => { // Загружаем новые сообщения без сброса ленты
+      if (isFetchingLatest) { // Проверяем, не идет ли уже запрос
+        return; // Прерываем выполнение
+      } // Конец проверки
+      isFetchingLatest = true; // Ставим флаг текущего запроса
+      try { // Пытаемся запросить свежие данные
+        const params = new URLSearchParams({ limit: pageSize }); // Формируем параметры без смещения
+        if (currentPeer) { // Если выбран фильтр
+          params.set('peer_id', currentPeer); // Добавляем фильтр peer_id
+        } // Конец проверки фильтра
+        const response = await fetch(`/api/logs?${params.toString()}`); // Выполняем запрос к API логов
+        const data = await response.json(); // Читаем JSON-ответ
+        const items = data.items || []; // Забираем массив сообщений
+        const freshItems = []; // Готовим массив новых записей
+        items.forEach((msg) => { // Перебираем свежие записи
+          const messageKey = buildMessageKey(msg); // Формируем ключ сообщения
+          if (!renderedMessageKeys.has(messageKey)) { // Если сообщение еще не отрисовано
+            freshItems.push(msg); // Добавляем в список новых
+          } // Конец проверки дубликата
+        }); // Конец перебора свежих записей
+        if (freshItems.length) { // Если есть новые сообщения
+          renderMessagesChunk(freshItems, { mode: 'prepend' }); // Добавляем их в начало таблицы
+          messagesStore = freshItems.concat(messagesStore); // Обновляем локальное хранилище, добавляя свежие записи
+          currentOffset = renderedMessageKeys.size; // Пересчитываем смещение
+          hasMore = true; // После появления новых данных разрешаем дальнейшие подгрузки
+        } // Конец проверки наличия новых сообщений
+      } catch (err) { // Обработка ошибок загрузки
+        console.error('Не удалось загрузить новые сообщения', err); // Пишем ошибку в консоль
+      } finally { // Финальный блок
+        isFetchingLatest = false; // Сбрасываем флаг
+      } // Конец финального блока
+    }; // Конец функции загрузки новых сообщений
+
+    const reloadMessages = async () => { // Полностью перезагружаем ленту при смене фильтра
+      isLoadingOlder = true; // Ставим флаг загрузки
+      try { // Пытаемся запросить первую страницу
+        const params = new URLSearchParams({ limit: pageSize, offset: 0 }); // Параметры первой страницы
+        if (currentPeer) { // Если выбран peer_id
+          params.set('peer_id', currentPeer); // Добавляем фильтр в запрос
+        } // Конец проверки фильтра
+        const response = await fetch(`/api/logs?${params.toString()}`); // Делаем запрос
+        const data = await response.json(); // Читаем ответ
+        messagesStore = data.items || []; // Сохраняем новую порцию в хранилище
+        currentOffset = messagesStore.length; // Обновляем смещение
+        hasMore = messagesStore.length === pageSize; // Ставим флаг наличия следующих страниц
+        renderMessagesChunk(messagesStore, { mode: 'replace' }); // Полностью перерисовываем таблицу
+      } catch (err) { // Обработка ошибок загрузки
+        console.error('Не удалось перезагрузить ленту сообщений', err); // Логируем ошибку
+        messagesStore = []; // Сбрасываем хранилище
+        currentOffset = 0; // Сбрасываем смещение
+        hasMore = false; // Отключаем подгрузку
+        renderMessagesChunk([], { mode: 'replace' }); // Показываем плейсхолдер
+      } finally { // Финальный блок
+        isLoadingOlder = false; // Снимаем флаг загрузки
+      } // Конец финального блока
+    }; // Конец функции полной перезагрузки
+
+    const handleScroll = () => { // Обработчик прокрутки страницы
+      const scrollPosition = window.scrollY + window.innerHeight; // Текущая позиция прокрутки
+      const threshold = document.documentElement.scrollHeight - 400; // Порог начала подгрузки
+      if (scrollPosition >= threshold) { // Если подошли к порогу
+        loadOlderMessages(); // Запрашиваем старые сообщения
+      } // Конец проверки порога
+    }; // Конец обработчика прокрутки
+
+    renderMessagesChunk(messagesStore, { mode: 'replace' }); // Рисуем стартовую таблицу из серверных данных
+    if (hasMore) { // Если есть данные для подгрузки
+      loadOlderMessages(); // Сразу запрашиваем следующую порцию для плавной ленты
+    } // Конец проверки наличия данных
+    window.addEventListener('scroll', handleScroll); // Подписываемся на прокрутку для бесконечной ленты
 
     function renderPeers(peers) { // Функция отрисовки списка чатов
       const uniquePeers = Array.from( // Формируем массив уникальных чатов
@@ -469,21 +613,19 @@
 
     async function poll() { // Функция периодического опроса
       try { // Пытаемся отправить запрос
-        const logsUrl = currentPeer ? `/api/logs?peer_id=${currentPeer}` : '/api/logs'; // Формируем URL логов
         const alertsUrl = '/api/service-logs?event_type=important&limit=1'; // URL для важных оповещений
         const statsUrl = `/api/stats?range=${selectedRange}`; // Формируем URL статистики с выбранным диапазоном
-        const [statsRes, overviewRes, logsRes, alertsRes] = await Promise.all([fetch(statsUrl), fetch('/api/overview'), fetch(logsUrl), fetch(alertsUrl)]); // Запрашиваем статистику, обзор, логи и оповещения
+        const [statsRes, overviewRes, alertsRes] = await Promise.all([fetch(statsUrl), fetch('/api/overview'), fetch(alertsUrl)]); // Запрашиваем статистику, обзор и оповещения
         const stats = await statsRes.json(); // Читаем JSON статистики
         const overview = await overviewRes.json(); // Читаем JSON обзора
-        const logs = await logsRes.json(); // Читаем JSON логов
         const alerts = await alertsRes.json(); // Читаем JSON оповещений
         updateMetrics(stats); // Обновляем метрики
         renderGroup(overview.group || {}); // Обновляем информацию о сообществе
         renderConversations(overview.conversations || []); // Обновляем диалоги
         renderPeers(overview.peers || []); // Обновляем список чатов
-        renderMessages(logs.items || []); // Обновляем таблицу сообщений
         renderStorage(overview.storage || initialStorage || {}); // Обновляем данные о файле базы
         updateImportantBadge(alerts.total || 0); // Обновляем бейдж важных сообщений
+        await fetchLatestMessages(); // Подтягиваем новые сообщения без сброса ленты
       } catch (err) { // В случае ошибки
         console.error('Ошибка обновления дашборда', err); // Пишем ошибку в консоль
       } // Конец обработки ошибки
@@ -491,7 +633,8 @@
 
     peerSelect.addEventListener('change', () => { // Реагируем на выбор чата
       currentPeer = peerSelect.value; // Сохраняем выбранный peer_id
-      poll(); // Перезапрашиваем данные
+      reloadMessages(); // Перерисовываем таблицу под новый фильтр
+      poll(); // Перезапрашиваем метрики и свежие сообщения
     }); // Конец обработчика
 
     bootstrapPage(); // Запускаем инициализацию

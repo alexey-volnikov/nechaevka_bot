@@ -1620,12 +1620,21 @@ def build_dashboard_app(
         }  # Словарь с сервисным событием
 
     def serialize_log(row: Dict) -> Dict:
-        raw_payload = json.loads(row.get("payload") or "{}")  # Сериализуем исходный payload
+        payload_text = row.get("payload") or "{}"  # Берем сырой payload или пустой JSON
+        try:  # Пытаемся распарсить payload
+            raw_payload = json.loads(payload_text)  # Преобразуем текст в словарь
+        except Exception:  # При ошибке парсинга
+            raw_payload = {}  # Возвращаем пустой словарь, чтобы не ронять страницу
         reply_payload = raw_payload.get("reply_message") if isinstance(raw_payload, dict) else None  # Получаем блок ответа из payload
+        reply_attachments_raw = row.get("reply_message_attachments") or "[]"  # Берем текст вложений ответа или пустой список
+        try:  # Пытаемся распарсить вложения ответа
+            reply_attachments = enrich_attachments_list(json.loads(reply_attachments_raw))  # Преобразуем вложения в структурированный список
+        except Exception:  # При ошибке парсинга вложений
+            reply_attachments = []  # Используем пустой список, чтобы не ронять страницу
         reply = {  # Готовим словарь ответа
             "id": row.get("reply_message_id"),  # ID исходного сообщения
             "text": row.get("reply_message_text"),  # Текст исходного сообщения
-            "attachments": enrich_attachments_list(json.loads(row.get("reply_message_attachments") or "[]")),  # Вложения исходного сообщения с публичными ссылками
+            "attachments": reply_attachments,  # Вложения исходного сообщения с публичными ссылками
             "from_id": row.get("reply_message_from_id"),  # Автор исходного сообщения
             "from_name": row.get("reply_message_from_name"),  # Имя автора исходного сообщения
             "from_avatar": row.get("reply_message_from_avatar"),  # Аватар автора исходного сообщения
@@ -1637,7 +1646,11 @@ def build_dashboard_app(
             reply["from_id"] = reply_payload.get("from_id")  # Подставляем автора исходного сообщения
             reply["from_name"] = reply_payload.get("from_name")  # Подставляем имя автора исходного сообщения
             reply["from_avatar"] = reply_payload.get("from_avatar")  # Подставляем аватар автора исходного сообщения
-        attachments = enrich_attachments_list(json.loads(row.get("attachments") or "[]"))  # Подготавливаем вложения с публичными ссылками
+        attachments_raw = row.get("attachments") or "[]"  # Берем строку вложений или пустой список
+        try:  # Пытаемся распарсить вложения
+            attachments = enrich_attachments_list(json.loads(attachments_raw))  # Подготавливаем вложения с публичными ссылками
+        except Exception:  # При ошибке разбора вложений
+            attachments = []  # Используем пустой список, чтобы не ломать страницу профиля
 
         copy_history = serialize_copy_history(raw_payload.get("copy_history")) if isinstance(raw_payload, dict) else []  # Сериализуем репосты и вложения
         return {  # Формируем итоговый словарь лога
@@ -1670,6 +1683,8 @@ def build_dashboard_app(
             initial_stats=assemble_stats(DEFAULT_TIMELINE_MINUTES),  # Начальные метрики состояния по умолчанию
             initial_peers=event_logger.list_peers(),  # Доступные peer_id из базы
             initial_storage=assemble_storage(),  # Описание файла базы для подсказки
+            initial_logs=[serialize_log(row) for row in event_logger.fetch_messages(limit=MESSAGES_PAGE_SIZE, offset=0)],  # Стартовый список логов для главной страницы
+            page_size=MESSAGES_PAGE_SIZE,  # Размер страницы для бесконечной ленты сообщений
             demo_mode=demo_mode,  # Флаг демо для вывода на страницу
         )  # Возвращаем HTML страницу
 
