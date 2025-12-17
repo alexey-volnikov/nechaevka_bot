@@ -90,12 +90,50 @@
     sticker: 'attachment-sticker', // Класс для стикеров
     default: 'attachment-generic', // Класс по умолчанию для остальных типов
   }; // Завершаем словарь классов
+  // Строим ссылку на локальный файл, если вложение сохранилось на диск
+  function buildLocalAttachmentLink(att) {
+    // Проверяем корректность вложения
+    if (!att || typeof att !== 'object') {
+      return null; // Возвращаем пустое значение при неверном типе
+    } // Завершаем проверку объекта
+    // Читаем локальный путь из вложения
+    const rawPath = att.local_path; // Берём путь сохранённого файла
+    // Проверяем, что путь задан строкой
+    if (!rawPath || typeof rawPath !== 'string') {
+      return null; // Возвращаем пустое значение, если путь отсутствует
+    } // Завершаем проверку строки пути
+    // Приводим путь к единому виду с прямыми слешами
+    const normalizedPath = rawPath.replace(/\\/g, '/'); // Заменяем обратные слеши на прямые
+    // Определяем маркеры директории вложений
+    const tokens = ['/attachments/', '/data/attachments/']; // Маркеры базовой директории вложений
+    // Ищем первый подходящий маркер в пути
+    for (const token of tokens) {
+      // Находим индекс маркера в пути
+      const idx = normalizedPath.lastIndexOf(token); // Позиция найденного маркера
+      // Проверяем, что маркер присутствует
+      if (idx >= 0) {
+        // Получаем относительный путь после маркера
+        const relative = normalizedPath.slice(idx + token.length); // Отрезаем префикс директории
+        // Проверяем, что относительный путь непустой
+        if (relative) {
+          return `/attachments/${relative}`; // Формируем публичный URL для отдачи через Flask
+        } // Завершаем проверку относительного пути
+      } // Завершаем проверку наличия маркера
+    } // Завершаем перебор маркеров
+    return null; // Возвращаем пустое значение, если путь не удалось разобрать
+  } // Конец функции построения локальной ссылки
   // Пытаемся извлечь ссылку на вложение в удобном формате
   function normalizeAttachmentLink(att) {
     // Проверяем, что объект вложения корректен
     if (!att || typeof att !== 'object') {
       return null; // Возвращаем null для некорректных данных
     } // Завершаем проверку объекта
+    // Пробуем использовать ссылку на локальный файл
+    const localLink = buildLocalAttachmentLink(att); // Получаем ссылку на локальное вложение
+    // Если локальная ссылка определена, возвращаем её
+    if (localLink) {
+      return localLink; // Возвращаем путь вида /attachments/...
+    } // Завершаем проверку локальной ссылки
     // Если есть публичная ссылка, возвращаем её
     if (att.public_url) {
       return att.public_url; // Возвращаем публичный URL
@@ -108,21 +146,89 @@
     if (att.url) {
       return att.url; // Возвращаем значение url
     } // Завершаем проверку поля url
+    // Если это аудиосообщение, используем ссылки аудио
+    if (att.audio_message && (att.audio_message.link_ogg || att.audio_message.link_mp3)) {
+      return att.audio_message.link_ogg || att.audio_message.link_mp3; // Возвращаем ссылку на аудио
+    } // Завершаем обработку аудиосообщения
+    // Если это обычный аудио-трек, используем ссылку
+    if (att.audio && att.audio.url) {
+      return att.audio.url; // Возвращаем ссылку на аудио
+    } // Завершаем обработку аудио-трека
+    // Если это документ с ссылкой, используем её
+    if (att.doc && att.doc.url) {
+      return att.doc.url; // Возвращаем ссылку на документ
+    } // Завершаем обработку документа
     // Если это фото с размерами, берём самый широкий вариант
     if (att.photo && Array.isArray(att.photo.sizes) && att.photo.sizes.length) {
       const sorted = [...att.photo.sizes].sort((a, b) => b.width - a.width); // Сортируем размеры по ширине
       return sorted[0]?.url || null; // Возвращаем ссылку самого большого размера
     } // Завершаем обработку фото
+    // Если это стикер, берём самую большую картинку стикера
+    if (att.sticker && Array.isArray(att.sticker.images) && att.sticker.images.length) {
+      const sortedSticker = [...att.sticker.images].sort((a, b) => (b.width || 0) - (a.width || 0)); // Сортируем варианты стикера
+      return sortedSticker[0]?.url || null; // Возвращаем ссылку на максимальный размер стикера
+    } // Завершаем обработку стикера
+    // Если это документ с превью-изображением, используем превью
+    if (att.doc && att.doc.preview && att.doc.preview.photo && Array.isArray(att.doc.preview.photo.sizes)) {
+      const docPreview = [...att.doc.preview.photo.sizes].sort((a, b) => (b.width || 0) - (a.width || 0)); // Сортируем превью документа
+      return docPreview[0]?.src || docPreview[0]?.url || null; // Возвращаем ссылку на превью документа
+    } // Завершаем обработку превью документа
     // Если это видео с встроенным плеером, возвращаем ссылку на плеер
     if (att.video && att.video.player) {
       return att.video.player; // Возвращаем ссылку на плеер видео
     } // Завершаем обработку видео
+    // Если это вложение-ссылка, используем URL из блока link
+    if (att.link && att.link.url) {
+      return att.link.url; // Возвращаем ссылку на внешний ресурс
+    } // Завершаем обработку ссылок
+    // Если это пост на стене, собираем ссылку на пост
+    if (att.wall && att.wall.owner_id !== undefined && att.wall.id !== undefined) {
+      return `https://vk.com/wall${att.wall.owner_id}_${att.wall.id}`; // Возвращаем ссылку на пост
+    } // Завершаем обработку поста
+    // Если это комментарий к посту, собираем ссылку на комментарий
+    if (att.wall_reply && att.wall_reply.owner_id !== undefined && att.wall_reply.post_id !== undefined && att.wall_reply.id !== undefined) {
+      return `https://vk.com/wall${att.wall_reply.owner_id}_${att.wall_reply.post_id}?reply=${att.wall_reply.id}`; // Возвращаем ссылку на комментарий
+    } // Завершаем обработку комментария
+    // Если это товар, формируем ссылку на карточку товара
+    if (att.market && att.market.owner_id !== undefined && att.market.id !== undefined) {
+      return `https://vk.com/market${att.market.owner_id}?w=product${att.market.owner_id}_${att.market.id}`; // Возвращаем ссылку на товар
+    } // Завершаем обработку товара
+    // Если это подарок, пробуем взять превью изображения подарка
+    if (att.gift && (att.gift.thumb_256 || att.gift.thumb_96)) {
+      return att.gift.thumb_256 || att.gift.thumb_96; // Возвращаем ссылку на превью подарка
+    } // Завершаем обработку подарка
     return null; // Возвращаем null, если ссылку определить не удалось
   } // Конец функции получения ссылки
-  // Проверяем, является ли тип вложения видеоконтентом
-  function isVideoType(type) {
-    return type === 'video' || type === 'story'; // Возвращаем результат проверки по списку типов видео
-  } // Конец функции проверки видео
+  // Определяем вид медиа, чтобы правильно отрисовать в модалке
+  function detectMediaKind(type, source) {
+    // Нормализуем тип вложения
+    const normalized = type || 'file'; // Подставляем значение по умолчанию
+    // Проверяем признаки изображения
+    if (normalized === 'photo' || normalized === 'sticker' || normalized === 'graffiti') {
+      return 'image'; // Возвращаем тип изображения
+    } // Завершаем ветку изображений
+    // Проверяем признаки видео
+    if (normalized === 'video' || normalized === 'story') {
+      return 'video'; // Возвращаем тип видео
+    } // Завершаем ветку видео
+    // Проверяем признаки аудио
+    if (normalized === 'audio' || normalized === 'audio_message' || normalized === 'podcast') {
+      return 'audio'; // Возвращаем тип аудио
+    } // Завершаем ветку аудио
+    // Проверяем документы с изображением внутри
+    if (normalized === 'doc') {
+      const mime = source?.doc?.mime_type; // Читаем MIME-тип документа
+      if (typeof mime === 'string' && mime.startsWith('image/')) {
+        return 'image'; // Возвращаем изображение для графических документов
+      } // Завершаем проверку MIME документа
+      return 'file'; // Для остальных документов возвращаем тип файла
+    } // Завершаем ветку документов
+    // Определяем ссылки и посты как кликабельные карточки
+    if (normalized === 'link' || normalized === 'wall' || normalized === 'wall_reply' || normalized === 'share' || normalized === 'market' || normalized === 'gift') {
+      return 'link'; // Возвращаем тип ссылки
+    } // Завершаем ветку ссылок
+    return 'file'; // По умолчанию считаем элемент файлом
+  } // Конец функции определения типа медиа
   // Добавляем эмодзи и подпись для отображения типа вложения
   function buildTypeLabel(type) {
     const normalized = type || 'file'; // Нормализуем тип, чтобы не было пустых значений
@@ -183,6 +289,27 @@
     const state = att.download_state; // Берём состояние загрузки
     return state === 'failed' || state === 'missing'; // Возвращаем true, если загрузка не удалась
   } // Конец функции проверки ошибки вложения
+  // Форматируем размер файла в читаемый вид
+  function formatFileSize(bytes) {
+    // Проверяем, что размер передан числом
+    if (typeof bytes !== 'number' || Number.isNaN(bytes) || bytes <= 0) {
+      return null; // Возвращаем null при некорректном размере
+    } // Завершаем проверку значения
+    // Задаём список единиц измерения
+    const units = ['Б', 'КБ', 'МБ', 'ГБ']; // Единицы измерения
+    // Инициализируем индекс единицы измерения
+    let unitIndex = 0; // Текущая единица измерения
+    // Подготавливаем значение размера
+    let value = bytes; // Текущее значение размера
+    // Делим размер на 1024, пока он не станет меньше 1024 или пока не кончатся единицы
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024; // Делим значение на 1024
+      unitIndex += 1; // Переходим к следующей единице измерения
+    } // Завершаем цикл деления
+    // Округляем значение для отображения
+    const formatted = value >= 10 ? Math.round(value) : value.toFixed(1); // Формируем строку размера
+    return `${formatted} ${units[unitIndex]}`; // Возвращаем человекочитаемый размер
+  } // Конец функции форматирования размера файла
   // Считаем количество вложений с признаком ожидания в обычном списке
   function countPendingAttachments(list) {
     // Проверяем, что список корректен
@@ -327,12 +454,41 @@
       const type = att.type || 'file'; // Подбираем тип или значение по умолчанию
       // Подбираем подпись файла
       const caption = att.title || att.name || att.doc?.title || att.link?.title || att.photo?.text || att.description || ''; // Формируем подпись
+      // Определяем вид медиа для корректного рендера
+      const kind = detectMediaKind(type, att); // Выбираем подходящий тип отображения
+      // Готовим список деталей вложения
+      const details = []; // Список строк с подробностями
+      // Добавляем расширение документа, если оно указано
+      if (att.doc?.ext) {
+        details.push(`Расширение: .${att.doc.ext}`); // Сохраняем расширение
+      } // Завершаем обработку расширения
+      // Добавляем размер файла, если он известен
+      const docSize = formatFileSize(att.doc?.size); // Форматируем размер документа
+      if (docSize) {
+        details.push(`Размер: ${docSize}`); // Сохраняем информацию о размере
+      } // Завершаем обработку размера
+      // Добавляем описание ссылки, если оно присутствует
+      if (att.link?.description) {
+        details.push(att.link.description); // Сохраняем описание внешнего ресурса
+      } // Завершаем обработку описания ссылки
+      // Добавляем информацию об аудио, если она есть
+      if (att.audio && (att.audio.artist || att.audio.title)) {
+        const artist = att.audio.artist || 'Аудио'; // Определяем исполнителя или плейсхолдер
+        const title = att.audio.title ? ` — ${att.audio.title}` : ''; // Формируем название трека
+        details.push(`${artist}${title}`); // Сохраняем подпись аудио
+      } // Завершаем обработку аудио
+      // Добавляем длительность аудиосообщения, если она указана
+      if (att.audio_message && typeof att.audio_message.duration === 'number') {
+        details.push(`Длительность: ${att.audio_message.duration} с`); // Сохраняем длительность аудиосообщения
+      } // Завершаем обработку длительности
+      // Собираем итоговое описание для карточки
+      const description = details.length ? details.join(' • ') : null; // Объединяем детали в строку
       // Запоминаем сигнатуру, если она рассчитана
       if (signature && seen) {
         seen.add(signature); // Добавляем сигнатуру в набор дублей
       } // Завершаем добавление сигнатуры
       // Добавляем нормализованное вложение в итоговый список
-      bucket.push({ url, type, caption, origin: origin || 'Сообщение' }); // Сохраняем элемент в коллекцию
+      bucket.push({ url, type, caption, origin: origin || 'Сообщение', kind, description }); // Сохраняем элемент в коллекцию
     }); // Завершаем перебор вложений
   } // Конец функции сборки вложений
   // Рекурсивно собираем вложения из copy_history
@@ -700,12 +856,24 @@
     currentGalleryIndex = boundedIndex; // Сохраняем индекс
     // Берём выбранный элемент
     const item = galleryData.items[boundedIndex]; // Текущий элемент
-    // Проверяем, нужно ли использовать видеоплеер
-    const isVideo = isVideoType(item.type); // Определяем тип медиа
-    // Формируем HTML для медиа
-    const mediaHtml = isVideo
-      ? `<video controls src="${item.url}" class="w-100" preload="metadata"></video>` // HTML видео
-      : `<img src="${item.url}" alt="Вложение" loading="lazy" />`; // HTML изображения
+    // Определяем тип рендера для вложения
+    const mediaKind = item.kind || detectMediaKind(item.type, item); // Вид контента для отображения
+    // Готовим HTML блока медиа
+    let mediaHtml = ''; // Переменная для итоговой разметки
+    // Если нужно показать видео
+    if (mediaKind === 'video') {
+      mediaHtml = `<video controls src="${item.url}" class="w-100" preload="metadata"></video>`; // Формируем тэг video
+    } else if (mediaKind === 'audio') {
+      mediaHtml = `<audio controls class="w-100" src="${item.url}"></audio>`; // Формируем тэг audio
+    } else if (mediaKind === 'image') {
+      mediaHtml = `<img src="${item.url}" alt="Вложение" loading="lazy" />`; // Формируем тэг img
+    } else {
+      const description = item.description ? `<div class="text-secondary mt-2">${item.description}</div>` : ''; // Дополнительное описание файла
+      const linkBlock = item.url // Готовим блок ссылки или плейсхолдера
+        ? `<a href="${item.url}" target="_blank" rel="noopener noreferrer">Открыть содержимое</a>` // Ссылка на файл
+        : '<span class="text-secondary">Ссылка недоступна</span>'; // Плейсхолдер при отсутствии ссылки
+      mediaHtml = `<div class="w-100 p-3 rounded border border-secondary" style="background: rgba(255, 255, 255, 0.04);"><div class="fw-semibold text-light">${buildTypeLabel(item.type)}</div><div class="text-secondary small">${linkBlock}</div>${description}</div>`; // Карточка файла без встроенного предпросмотра
+    } // Завершаем выбор вида медиа
     // Подставляем медиа в модалку
     galleryMedia.innerHTML = mediaHtml; // Рендерим медиа
     // Формируем подпись файла
