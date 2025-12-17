@@ -79,6 +79,9 @@
     if (options.isNew) { // Если строка новая
       row.classList.add('message-row-new'); // Добавляем класс анимации появления
     } // Конец проверки новизны строки
+    if (message.is_deleted) { // Если сообщение помечено как удаленное
+      row.classList.add('message-deleted'); // Подсвечиваем строку красноватым фоном
+    } // Конец проверки удаления
     const peerCell = buildPeerCell(message, { allowLink: true }); // Строим ячейку чата с ссылкой
     const authorCell = buildSenderCell(message, { allowLink: true, showBotBadge: true }); // Строим ячейку отправителя с плашкой бота
     const replyCell = buildReplyPreview(message.reply, { mode: 'compact' }); // Строим компактное превью ответа
@@ -90,6 +93,9 @@
 
   function buildLogsRow(log, galleryApi, galleryKey, options = {}) { // Строим строку таблицы логов
     const row = document.createElement('tr'); // Создаем элемент строки
+    if (log.is_deleted) { // Если лог отмечен как удаленный
+      row.classList.add('message-deleted'); // Добавляем класс подсветки удаления
+    } // Конец проверки удаления
     const formatDate = options.formatDate || ((value) => value || '—'); // Берем функцию форматирования времени
     const createdAt = formatDate(log.created_at); // Форматируем время создания
     const peerCell = buildPeerCell(log, { allowLink: true }); // Строим ячейку чата
@@ -107,6 +113,9 @@
 
   function buildEntityRow(message, galleryApi, galleryKey, options = {}) { // Строим строку для страниц профилей чатов и пользователей
     const row = document.createElement('tr'); // Создаем строку таблицы
+    if (message.is_deleted) { // Если сообщение помечено как удаленное
+      row.classList.add('message-deleted'); // Подсвечиваем строку в таблице профиля
+    } // Конец проверки удаления
     const formatDate = options.formatDate || ((value) => value || '—'); // Берем функцию форматирования времени
     const showChatColumn = Boolean(options.showChatColumn); // Определяем, нужно ли показывать столбец чата
     const showSenderColumn = Boolean(options.showSenderColumn); // Определяем, нужно ли показывать столбец отправителя
