@@ -243,6 +243,7 @@
   {% include 'partials/gallery.html' %} <!-- Подключаем общую разметку модального окна галереи -->
 
   <script src="{{ url_for('static', filename='js/gallery.js') }}"></script> <!-- Подключаем общий скрипт галереи -->
+  <script src="{{ url_for('static', filename='js/chat-history.js') }}"></script> <!-- Подключаем единый модуль истории чата -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script> <!-- Подключаем Bootstrap JS для тултипов -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script> <!-- Подключаем Chart.js -->
   <script> // Начало скрипта
@@ -268,6 +269,7 @@
     const importantBadge = document.getElementById('important-badge'); // Бейдж важных оповещений
     const timeRangeSelect = document.getElementById('time-range-select'); // Селектор выбора диапазона времени
     const galleryApi = window.galleryBridge || {}; // Получаем общий API галереи из подключенного файла
+    const chatApi = window.chatHistory || {}; // Получаем единый модуль истории чата
     let galleryCounter = 0; // Счетчик для генерации уникальных ключей галерей
     let currentPeer = ''; // Текущий выбранный peer_id
     let selectedRange = Number(initialStats?.range_minutes ?? 60); // Текущий выбранный диапазон минут
@@ -327,42 +329,6 @@
       groupMembersEl.textContent = data.members_count ? `${data.members_count} участников` : 'Участники: —'; // Отображаем участников
     } // Конец функции
 
-    function buildAvatarLabel(label, avatarUrl) { // Функция построения подписи с аватаркой
-      const safeLabel = label || '—'; // Определяем подпись, если значения нет
-      if (avatarUrl) { // Если есть ссылка на аватар
-        return `<span class="d-inline-flex align-items-center gap-2"><img src="${avatarUrl}" alt="Аватар" class="avatar-inline" loading="lazy" /> <span>${safeLabel}</span></span>`; // Возвращаем подпись с картинкой
-      } // Конец проверки аватара
-      return safeLabel; // Если аватар отсутствует, возвращаем только текст
-    } // Конец функции построения подписи
-
-    function buildReplyPreview(reply) { // Функция сборки ячейки ответа без технических ID
-      if (!reply || (!reply.text && !reply.from_name)) { // Проверяем наличие человекочитаемых данных
-        return '<span class="text-secondary">—</span>'; // Возвращаем плейсхолдер при отсутствии ответа
-      } // Конец проверки наличия ответа
-      const replyText = reply.text ? reply.text.slice(0, 120) : 'Без текста'; // Готовим превью текста без номеров
-      const replyAuthorName = reply.from_name || 'Автор не указан'; // Определяем имя автора ответа
-      const replyBotBadge = reply.is_bot ? '<span class="sender-badge">Бот</span>' : ''; // Строим плашку бота, если это бот
-      return `<div class="d-flex flex-column gap-1"><div class="text-secondary small">Ответ на предыдущее сообщение</div><div class="text-light small">${replyText}</div><div class="d-flex align-items-center gap-2 text-secondary small">${replyAuthorName}${replyBotBadge}</div></div>`; // Возвращаем компактный блок с текстом и автором
-    } // Конец функции сборки ответа
-
-    function buildPeerCell(message) { // Функция подготовки подписи чата без ID
-      const chatName = message.peer_title || 'Чат без названия'; // Определяем отображаемое имя чата
-      if (message.peer_id) { // Если есть идентификатор чата
-        return `<a href="/chat/${message.peer_id}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2">${buildAvatarLabel(chatName, message.peer_avatar)}</a>`; // Возвращаем подпись как ссылку на профиль чата
-      } // Конец проверки наличия ID
-      return buildAvatarLabel(chatName, message.peer_avatar); // Возвращаем подпись с аватаркой без ссылки
-    } // Конец функции подготовки чата
-
-    function buildSenderCell(message) { // Функция подготовки подписи отправителя с отметкой бота
-      const senderName = message.from_name || 'Неизвестный отправитель'; // Определяем имя отправителя
-      const senderLabel = buildAvatarLabel(senderName, message.from_avatar); // Формируем подпись с аватаркой
-      const botBadge = message.is_bot ? '<span class="sender-badge">Бот</span>' : ''; // Готовим плашку для бота
-      if (message.from_id) { // Если указан отправитель
-        return `<div class="d-flex align-items-center gap-2 flex-wrap"><a href="/user/${message.from_id}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2">${senderLabel}</a>${botBadge}</div>`; // Собираем HTML с ссылкой на профиль пользователя
-      } // Конец проверки наличия отправителя
-      return `<div class="d-flex align-items-center gap-2 flex-wrap">${senderLabel}${botBadge}</div>`; // Собираем итоговый HTML без ссылки
-    } // Конец функции подготовки отправителя
-
     let renderedMessageKeys = new Set(); // Хранилище ключей уже отрисованных сообщений
 
     function renderMessages(messages) { // Функция отрисовки сообщений
@@ -387,21 +353,8 @@
         ]; // Завершаем сборку частей ключа
         const messageKey = messageKeyParts.join('::'); // Склеиваем части ключа в строку
         nextRenderedKeys.add(messageKey); // Сохраняем ключ в новое множество для будущих сравнений
-        const row = document.createElement('tr'); // Создаем строку
-        if (!renderedMessageKeys.has(messageKey)) { // Проверяем, новое ли сообщение
-          row.classList.add('message-row-new'); // Добавляем анимацию появления только для новых
-        } // Конец проверки новизны
         const galleryKey = `msg-${msg.id ?? 'local'}-${galleryCounter++}`; // Формируем уникальный ключ для галереи
-        const normalizedAttachments = galleryApi.extractAttachments ? galleryApi.extractAttachments(msg) : []; // Нормализуем вложения через общий модуль
-        const normalizedCopyHistory = galleryApi.extractCopyHistory ? galleryApi.extractCopyHistory(msg) : []; // Нормализуем репосты через общий модуль
-        if (galleryApi.registerMessageGallery) { // Проверяем наличие функции регистрации галереи
-          galleryApi.registerMessageGallery({ ...msg, attachments: normalizedAttachments, copy_history: normalizedCopyHistory }, galleryKey); // Регистрируем вложения для модалки через общий модуль
-        } // Конец проверки функции регистрации
-        const contentCell = galleryApi.buildContentCell ? galleryApi.buildContentCell(normalizedAttachments, normalizedCopyHistory, galleryKey) : '<span class="text-secondary">—</span>'; // Формируем ячейку контента через общий модуль или плейсхолдер
-        const peerCell = buildPeerCell(msg); // Готовим ячейку чата с аватаркой
-        const authorCell = buildSenderCell(msg); // Готовим ячейку автора с отметкой бота
-        const replyCell = buildReplyPreview(msg.reply); // Готовим ячейку превью исходного сообщения без ID
-        row.innerHTML = `<td>${peerCell}</td><td>${authorCell}</td><td>${replyCell}</td><td>${contentCell}</td><td>${msg.text ?? ''}</td>`; // Заполняем ячейки без технических данных
+        const row = chatApi.buildDashboardRow(msg, galleryApi, galleryKey, { isNew: !renderedMessageKeys.has(messageKey) }); // Строим строку через единый модуль истории чата
         messagesBody.appendChild(row); // Добавляем строку в таблицу
       }); // Конец цикла
       renderedMessageKeys = nextRenderedKeys; // Обновляем сохраненное множество после перерисовки
@@ -455,7 +408,7 @@
         const localizedType = translatedTypes[type] || translatedTypes.unknown; // Переводим тип на русский
         const messagesCount = Number(conv.messages_count ?? 0); // Нормализуем количество сообщений
         const avatarUrl = conv.chat_settings?.photo?.photo_50 || conv.chat_settings?.photo?.photo_100 || conv.peer?.avatar; // Определяем ссылку на аватар беседы
-        const titleCell = peer.id ? `<a href="/chat/${peer.id}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2">${buildAvatarLabel(title, avatarUrl)}</a>` : buildAvatarLabel(title, avatarUrl); // Формируем подпись с аватаркой и ссылкой
+        const titleCell = peer.id ? `<a href="/chat/${peer.id}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2">${chatApi.buildAvatarLabel(title, avatarUrl)}</a>` : chatApi.buildAvatarLabel(title, avatarUrl); // Формируем подпись с аватаркой и ссылкой
         const row = document.createElement('tr'); // Создаем строку
         row.innerHTML = `<td>${peer.id ?? '—'}</td><td>${localizedType}</td><td>${titleCell}</td><td>${messagesCount}</td>`; // Заполняем строку
         conversationsBody.appendChild(row); // Добавляем строку

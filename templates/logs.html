@@ -204,6 +204,7 @@
   {% include 'partials/gallery.html' %} <!-- Подключаем общую разметку модального окна галереи -->
 
   <script src="{{ url_for('static', filename='js/gallery.js') }}"></script> <!-- Подключаем общий скрипт галереи -->
+  <script src="{{ url_for('static', filename='js/chat-history.js') }}"></script> <!-- Подключаем единый модуль истории чата -->
   <script> // Начало скрипта
     const initialLogs = {{ initial_logs|tojson }}; // Стартовые логи из шаблона
     const initialPeers = {{ initial_peers|tojson }}; // Стартовый список чатов
@@ -230,6 +231,7 @@
     const messagesTabBtn = document.getElementById('messages-tab-btn'); // Кнопка вкладки сообщений
     const serviceTabBtn = document.getElementById('service-tab-btn'); // Кнопка вкладки сервисных логов
     const galleryApi = window.galleryBridge || {}; // Получаем общий API галереи из подключенного файла
+    const chatApi = window.chatHistory || {}; // Получаем единый модуль истории чата
     let galleryCounter = 0; // Счетчик для генерации ключей галерей
     let serviceOffset = 0; // Текущее смещение
     let serviceTotal = 0; // Общее количество сервисных событий
@@ -253,28 +255,6 @@
       const parsed = value ? new Date(value) : null; // Парсим строку даты
       return parsed && !Number.isNaN(parsed.valueOf()) ? timeFormatter.format(parsed) : '—'; // Возвращаем отформатированное значение или тире
     } // Конец функции форматирования
-
-    function buildAvatarLabel(label, avatarUrl) { // Функция построения подписи с аватаркой
-      const safeLabel = label || '—'; // Определяем подпись, если значения нет
-      if (avatarUrl) { // Если есть ссылка на аватар
-        return `<span class="d-inline-flex align-items-center gap-2"><img src="${avatarUrl}" alt="Аватар" class="avatar-inline" loading="lazy" /> <span>${safeLabel}</span></span>`; // Возвращаем подпись с картинкой
-      } // Конец проверки аватара
-      return safeLabel; // Если аватар отсутствует, возвращаем только текст
-    } // Конец функции построения подписи
-
-    function buildReplyPreview(reply, peerId) { // Функция сборки ячейки ответа
-      if (!reply || (!reply.id && !reply.text && !reply.from_id)) { // Проверяем наличие полезных данных
-        return '<span class="text-secondary">—</span>'; // Возвращаем плейсхолдер при отсутствии ответа
-      } // Конец проверки наличия ответа
-      const replyId = reply.id ?? '—'; // Определяем ID исходного сообщения
-      const replyText = reply.text ? reply.text.slice(0, 120) : 'Без текста'; // Готовим превью текста
-      const replyAuthorLabel = reply.from_name ? `${reply.from_name} (ID: ${reply.from_id ?? '—'})` : reply.from_id ? `ID: ${reply.from_id}` : 'Автор неизвестен'; // Формируем подпись автора ответа
-      const replyAuthorCell = buildAvatarLabel(replyAuthorLabel, reply.from_avatar); // Готовим подпись автора с аватаркой
-      const replyLink = reply.id && peerId ? `<a href="https://vk.com/im?sel=${peerId}&msgid=${reply.id}" target="_blank" rel="noopener noreferrer">#${reply.id}</a>` : `#${replyId}`; // Собираем ссылку на исходное сообщение
-      const replyAttachmentsCount = Array.isArray(reply.attachments) ? reply.attachments.length : 0; // Считаем вложения исходного сообщения
-      const replyAttachmentsLabel = replyAttachmentsCount ? `${replyAttachmentsCount} влож.` : 'Без вложений'; // Формируем подпись вложений
-      return `<div class="d-flex flex-column gap-1"><div class="d-flex align-items-center gap-2">${replyLink}<span class="text-secondary small">${replyAttachmentsLabel}</span></div><div class="text-secondary small">${replyText}</div><div class="text-secondary small">${replyAuthorCell}</div></div>`; // Возвращаем HTML ячейки
-    } // Конец функции сборки ответа
 
     function switchToMessages() { // Функция показа вкладки сообщений
       messagesSection.classList.remove('d-none'); // Убираем скрытие секции сообщений
@@ -336,26 +316,8 @@
         return; // Завершаем функцию
       } // Конец проверки пустоты
       logs.forEach((log) => { // Перебираем логи
-        const row = document.createElement('tr'); // Создаем строку
         const galleryKey = `log-${log.id ?? 'local'}-${galleryCounter++}`; // Формируем ключ галереи для записи
-        const normalizedAttachments = galleryApi.extractAttachments ? galleryApi.extractAttachments(log) : []; // Нормализуем вложения через общий модуль
-        const normalizedCopyHistory = galleryApi.extractCopyHistory ? galleryApi.extractCopyHistory(log) : []; // Нормализуем copy_history через общий модуль
-        if (galleryApi.registerMessageGallery) { // Проверяем наличие функции регистрации галереи
-          galleryApi.registerMessageGallery({ ...log, attachments: normalizedAttachments, copy_history: normalizedCopyHistory }, galleryKey); // Регистрируем вложения через общий модуль
-        } // Конец проверки функции регистрации
-        const contentCell = galleryApi.buildContentCell ? galleryApi.buildContentCell(normalizedAttachments, normalizedCopyHistory, galleryKey) : '<span class="text-secondary">—</span>'; // Формируем ячейку контента через общий модуль или плейсхолдер
-        const botBadge = log.is_bot ? 'Да' : 'Нет'; // Флаг бота
-        const peerTitle = log.peer_title || 'Чат без названия'; // Подпись чата
-        const peerLabel = log.peer_id
-          ? `<a href="/chat/${log.peer_id}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2">${buildAvatarLabel(peerTitle, log.peer_avatar)}</a>`
-          : '<span class="text-secondary">—</span>'; // Ссылка на чат или плейсхолдер
-        const authorTitle = log.from_name || 'Неизвестный отправитель'; // Подпись отправителя
-        const authorLabel = log.from_id
-          ? `<a href="/user/${log.from_id}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2">${buildAvatarLabel(authorTitle, log.from_avatar)}</a>`
-          : '<span class="text-secondary">—</span>'; // Ссылка на пользователя или плейсхолдер
-        const createdAt = formatDateTime(log.created_at); // Преобразуем время в локальный формат
-        const replyCell = buildReplyPreview(log.reply, log.peer_id); // Готовим ячейку превью исходного сообщения
-        row.innerHTML = `<td>${createdAt}</td><td>${peerLabel}</td><td>${authorLabel}</td><td>${botBadge}</td><td>${replyCell}</td><td>${contentCell}</td><td>${log.text ?? ''}</td><td>${log.message_id ?? '—'}</td><td>${log.id ?? '—'}</td><td><button type="button" class="btn btn-sm btn-outline-danger delete-log-btn" data-log-id="${log.id}">Удалить</button></td>`; // Заполняем ячейки и кнопку удаления
+        const row = chatApi.buildLogsRow(log, galleryApi, galleryKey, { formatDate: formatDateTime }); // Собираем строку через единый модуль истории чата
         logsBody.appendChild(row); // Добавляем строку в таблицу
       }); // Конец цикла
     } // Конец функции отрисовки
