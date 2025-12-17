@@ -60,6 +60,7 @@ ATTACHMENTS_ROOT = Path(os.getenv("ATTACHMENTS_DIR") or os.path.join(os.getcwd()
 ATTACHMENTS_ROOT.mkdir(parents=True, exist_ok=True)  # Создаем директорию вложений, если её нет
 STICKER_CACHE_DIR = ATTACHMENTS_ROOT / "stickers"  # Отдельная папка для кэширования стикеров по их ID
 STICKER_CACHE_DIR.mkdir(parents=True, exist_ok=True)  # Создаем папку кэша стикеров, чтобы можно было сохранять старые наклейки
+MESSAGES_PAGE_SIZE = 50  # Размер страницы для постраничной подгрузки сообщений
 
 
 class ServiceContextFilter(logging.Filter):  # Фильтр для добавления обязательных полей
@@ -340,18 +341,22 @@ class EventLogger:
             finally:  # Гарантируем возврат исходных настроек
                 self._connection.isolation_level = original_isolation  # Восстанавливаем режим автокоммита
 
-    def fetch_messages(self, peer_id: Optional[int] = None, limit: int = 50) -> List[Dict]:
+    def fetch_messages(
+        self, peer_id: Optional[int] = None, limit: int = 50, offset: int = 0, from_id: Optional[int] = None
+    ) -> List[Dict]:
         with self._lock:  # Начинаем безопасное чтение
             cursor = self._connection.cursor()  # Берем курсор
-            if peer_id is None:  # Если фильтр не задан
-                cursor.execute(  # Запрос без условия по чату
-                    "SELECT * FROM events WHERE event_type = ? ORDER BY id DESC LIMIT ?", ("message", limit)
-                )
-            else:  # Если задан конкретный чат
-                cursor.execute(  # Запрос с фильтром peer_id
-                    "SELECT * FROM events WHERE event_type = ? AND peer_id = ? ORDER BY id DESC LIMIT ?",
-                    ("message", int(peer_id), limit),
-                )
+            base_query = "SELECT * FROM events WHERE event_type = ?"  # Базовый запрос выборки
+            params: List[object] = ["message"]  # Начальные параметры для запроса
+            if peer_id is not None:  # Если задан фильтр по чату
+                base_query += " AND peer_id = ?"  # Добавляем условие по чату
+                params.append(int(peer_id))  # Подставляем значение peer_id
+            if from_id is not None:  # Если задан фильтр по отправителю
+                base_query += " AND from_id = ?"  # Добавляем условие по отправителю
+                params.append(int(from_id))  # Подставляем значение from_id
+            base_query += " ORDER BY id DESC LIMIT ? OFFSET ?"  # Добавляем сортировку и пагинацию
+            params.extend([int(limit), max(0, int(offset))])  # Добавляем лимит и смещение с защитой от отрицательных значений
+            cursor.execute(base_query, tuple(params))  # Выполняем сформированный запрос
             rows = cursor.fetchall()  # Читаем все строки
         return [dict(row) for row in rows]  # Преобразуем в словари
 
@@ -456,19 +461,19 @@ class EventLogger:
             "unique_peers": summary_row["unique_peers"],  # Количество уникальных чатов
         }
 
-    def fetch_messages_by_user(self, user_id: int, limit: int = 50, peer_id: Optional[int] = None) -> List[Dict]:
+    def fetch_messages_by_user(
+        self, user_id: int, limit: int = 50, peer_id: Optional[int] = None, offset: int = 0
+    ) -> List[Dict]:
         with self._lock:  # Начинаем безопасное чтение
             cursor = self._connection.cursor()  # Берем курсор
-            if peer_id is None:  # Если фильтр по чату не задан
-                cursor.execute(  # Запрос по отправителю
-                    "SELECT * FROM events WHERE event_type = ? AND from_id = ? ORDER BY id DESC LIMIT ?",
-                    ("message", int(user_id), limit),
-                )
-            else:  # Если нужно ограничить конкретным чатом
-                cursor.execute(  # Запрос по отправителю и чату
-                    "SELECT * FROM events WHERE event_type = ? AND from_id = ? AND peer_id = ? ORDER BY id DESC LIMIT ?",
-                    ("message", int(user_id), int(peer_id), limit),
-                )
+            params: List[object] = ["message", int(user_id)]  # Готовим параметры запроса
+            base_query = "SELECT * FROM events WHERE event_type = ? AND from_id = ?"  # Базовый запрос по отправителю
+            if peer_id is not None:  # Если нужно ограничить конкретным чатом
+                base_query += " AND peer_id = ?"  # Добавляем фильтр по чату
+                params.append(int(peer_id))  # Подставляем значение peer_id
+            base_query += " ORDER BY id DESC LIMIT ? OFFSET ?"  # Добавляем сортировку и пагинацию
+            params.extend([int(limit), max(0, int(offset))])  # Добавляем лимит и смещение с защитой от отрицательных значений
+            cursor.execute(base_query, tuple(params))  # Выполняем запрос
             rows = cursor.fetchall()  # Читаем строки
         return [dict(row) for row in rows]  # Возвращаем список словарей
 
@@ -1388,18 +1393,32 @@ def build_dashboard_app(
         except Exception:  # Обрабатываем неверный формат строки
             return None  # Возвращаем None при ошибке
 
-    def build_chat_payload(peer_id: int, limit: int = 200) -> Dict[str, object]:
+    def build_chat_payload(peer_id: int, limit: int = MESSAGES_PAGE_SIZE, offset: int = 0) -> Dict[str, object]:
         summary = event_logger.summarize_peer(peer_id)  # Получаем сводку по чату из базы
         if summary and summary.get("last_message_time"):  # Проверяем наличие временной метки
             summary["last_message_time"] = localize_iso(summary.get("last_message_time"))  # Переводим время в локальную зону
-        messages = [serialize_log(row) for row in event_logger.fetch_messages(peer_id=peer_id, limit=limit)]  # Получаем логи по чату
+        if summary is not None:  # Убеждаемся, что словарь сводки существует
+            summary.setdefault("peer_id", peer_id)  # Добавляем ID чата для единообразия в шаблоне
+            summary.setdefault("from_id", None)  # Явно прописываем пустой from_id, чтобы избежать undefined в JavaScript
+        messages = [
+            serialize_log(row)
+            for row in event_logger.fetch_messages(peer_id=peer_id, limit=limit, offset=offset)
+        ]  # Получаем логи по чату с пагинацией
         return {"summary": summary, "messages": messages}  # Возвращаем словарь с данными страницы
 
-    def build_user_payload(user_id: int, limit: int = 200) -> Dict[str, object]:
+    def build_user_payload(
+        user_id: int, limit: int = MESSAGES_PAGE_SIZE, offset: int = 0, peer_id: Optional[int] = None
+    ) -> Dict[str, object]:
         summary = event_logger.summarize_user(user_id)  # Получаем сводку по отправителю
         if summary and summary.get("last_message_time"):  # Проверяем, есть ли время последнего сообщения
             summary["last_message_time"] = localize_iso(summary.get("last_message_time"))  # Конвертируем время в локальную зону
-        messages = [serialize_log(row) for row in event_logger.fetch_messages_by_user(user_id=user_id, limit=limit)]  # Получаем логи пользователя
+        if summary is not None:  # Убеждаемся, что сводка существует
+            summary.setdefault("from_id", user_id)  # Явно прописываем ID отправителя для фронтенда
+            summary.setdefault("peer_id", peer_id)  # Добавляем текущий peer_id (или None), чтобы шаблон не получал undefined
+        messages = [
+            serialize_log(row)
+            for row in event_logger.fetch_messages_by_user(user_id=user_id, limit=limit, peer_id=peer_id, offset=offset)
+        ]  # Получаем логи пользователя с пагинацией
         return {"summary": summary, "messages": messages}  # Возвращаем словарь с данными страницы
 
     def build_public_attachment_url(local_path: Optional[str]) -> Optional[str]:  # Строит публичную ссылку на локальный файл вложения
@@ -1607,12 +1626,21 @@ def build_dashboard_app(
         }  # Словарь с сервисным событием
 
     def serialize_log(row: Dict) -> Dict:
-        raw_payload = json.loads(row.get("payload") or "{}")  # Сериализуем исходный payload
+        payload_text = row.get("payload") or "{}"  # Берем сырой payload или пустой JSON
+        try:  # Пытаемся распарсить payload
+            raw_payload = json.loads(payload_text)  # Преобразуем текст в словарь
+        except Exception:  # При ошибке парсинга
+            raw_payload = {}  # Возвращаем пустой словарь, чтобы не ронять страницу
         reply_payload = raw_payload.get("reply_message") if isinstance(raw_payload, dict) else None  # Получаем блок ответа из payload
+        reply_attachments_raw = row.get("reply_message_attachments") or "[]"  # Берем текст вложений ответа или пустой список
+        try:  # Пытаемся распарсить вложения ответа
+            reply_attachments = enrich_attachments_list(json.loads(reply_attachments_raw))  # Преобразуем вложения в структурированный список
+        except Exception:  # При ошибке парсинга вложений
+            reply_attachments = []  # Используем пустой список, чтобы не ронять страницу
         reply = {  # Готовим словарь ответа
             "id": row.get("reply_message_id"),  # ID исходного сообщения
             "text": row.get("reply_message_text"),  # Текст исходного сообщения
-            "attachments": enrich_attachments_list(json.loads(row.get("reply_message_attachments") or "[]")),  # Вложения исходного сообщения с публичными ссылками
+            "attachments": reply_attachments,  # Вложения исходного сообщения с публичными ссылками
             "from_id": row.get("reply_message_from_id"),  # Автор исходного сообщения
             "from_name": row.get("reply_message_from_name"),  # Имя автора исходного сообщения
             "from_avatar": row.get("reply_message_from_avatar"),  # Аватар автора исходного сообщения
@@ -1624,7 +1652,11 @@ def build_dashboard_app(
             reply["from_id"] = reply_payload.get("from_id")  # Подставляем автора исходного сообщения
             reply["from_name"] = reply_payload.get("from_name")  # Подставляем имя автора исходного сообщения
             reply["from_avatar"] = reply_payload.get("from_avatar")  # Подставляем аватар автора исходного сообщения
-        attachments = enrich_attachments_list(json.loads(row.get("attachments") or "[]"))  # Подготавливаем вложения с публичными ссылками
+        attachments_raw = row.get("attachments") or "[]"  # Берем строку вложений или пустой список
+        try:  # Пытаемся распарсить вложения
+            attachments = enrich_attachments_list(json.loads(attachments_raw))  # Подготавливаем вложения с публичными ссылками
+        except Exception:  # При ошибке разбора вложений
+            attachments = []  # Используем пустой список, чтобы не ломать страницу профиля
 
         copy_history = serialize_copy_history(raw_payload.get("copy_history")) if isinstance(raw_payload, dict) else []  # Сериализуем репосты и вложения
         return {  # Формируем итоговый словарь лога
@@ -1657,6 +1689,8 @@ def build_dashboard_app(
             initial_stats=assemble_stats(DEFAULT_TIMELINE_MINUTES),  # Начальные метрики состояния по умолчанию
             initial_peers=event_logger.list_peers(),  # Доступные peer_id из базы
             initial_storage=assemble_storage(),  # Описание файла базы для подсказки
+            initial_logs=[serialize_log(row) for row in event_logger.fetch_messages(limit=MESSAGES_PAGE_SIZE, offset=0)],  # Стартовый список логов для главной страницы
+            page_size=MESSAGES_PAGE_SIZE,  # Размер страницы для бесконечной ленты сообщений
             demo_mode=demo_mode,  # Флаг демо для вывода на страницу
         )  # Возвращаем HTML страницу
 
@@ -1681,13 +1715,7 @@ def build_dashboard_app(
 
     @app.route("/chat/<int:peer_id>")
     def chat_page(peer_id: int):
-        limit_raw = request.args.get("limit")  # Читаем необязательный лимит логов
-        try:  # Пытаемся преобразовать строку в число
-            limit = int(limit_raw) if limit_raw else 200  # Используем значение по умолчанию при отсутствии параметра
-        except Exception:  # Отлавливаем некорректное значение
-            limit = 200  # Возвращаем запасной лимит
-        limit = max(10, min(limit, 500))  # Ограничиваем диапазон лимита
-        payload = build_chat_payload(peer_id, limit=limit)  # Собираем данные чата и логи
+        payload = build_chat_payload(peer_id, limit=MESSAGES_PAGE_SIZE)  # Собираем данные чата с базовым размером страницы
         if not payload.get("summary"):  # Проверяем, удалось ли найти чат
             log_service_event(404, f"Чат {peer_id} не найден для страницы профиля")  # Фиксируем отсутствие данных
             return "Чат не найден", 404  # Возвращаем 404
@@ -1696,19 +1724,13 @@ def build_dashboard_app(
             "entity.html",  # Шаблон страницы профиля
             entity_type="chat",  # Тип сущности — чат
             payload=payload,  # Данные профиля и сообщений
-            limit=limit,  # Используемый лимит
+            page_size=MESSAGES_PAGE_SIZE,  # Размер страницы для подгрузки сообщений
             demo_mode=demo_mode,  # Флаг демо-режима
         )  # Возвращаем HTML страницы
 
     @app.route("/user/<int:user_id>")
     def user_page(user_id: int):
-        limit_raw = request.args.get("limit")  # Читаем необязательный лимит логов
-        try:  # Пробуем привести значение к числу
-            limit = int(limit_raw) if limit_raw else 200  # Используем значение по умолчанию, если параметр не передан
-        except Exception:  # Обрабатываем неверный ввод
-            limit = 200  # Возвращаем запасной лимит
-        limit = max(10, min(limit, 500))  # Ограничиваем диапазон лимита
-        payload = build_user_payload(user_id, limit=limit)  # Собираем данные пользователя и его сообщения
+        payload = build_user_payload(user_id, limit=MESSAGES_PAGE_SIZE)  # Собираем данные пользователя и его сообщения
         if not payload.get("summary"):  # Проверяем, удалось ли найти пользователя
             log_service_event(404, f"Пользователь {user_id} не найден для страницы профиля")  # Пишем в сервисные логи
             return "Пользователь не найден", 404  # Возвращаем 404
@@ -1717,7 +1739,7 @@ def build_dashboard_app(
             "entity.html",  # Шаблон страницы профиля
             entity_type="user",  # Тип сущности — пользователь
             payload=payload,  # Данные профиля и сообщений
-            limit=limit,  # Используемый лимит
+            page_size=MESSAGES_PAGE_SIZE,  # Размер страницы для подгрузки сообщений
             demo_mode=demo_mode,  # Флаг демо-режима
         )  # Возвращаем HTML страницы
 
@@ -1725,12 +1747,23 @@ def build_dashboard_app(
     def logs():
         peer_id_raw = request.args.get("peer_id")  # Читаем peer_id из запроса
         limit_raw = request.args.get("limit")  # Читаем лимит из запроса
+        offset_raw = request.args.get("offset")  # Читаем смещение из запроса
+        from_id_raw = request.args.get("from_id")  # Читаем фильтр по отправителю
         peer_id = int(peer_id_raw) if peer_id_raw else None  # Преобразуем в число при наличии
-        limit = int(limit_raw) if limit_raw else 50  # Устанавливаем лимит выборки
-        limit = max(1, min(limit, 1000))  # Ограничиваем диапазон лимита
-        messages = [serialize_log(row) for row in event_logger.fetch_messages(peer_id=peer_id, limit=limit)]  # Запрашиваем логи
-        log_service_event(200, f"Отдаём JSON с логами peer_id={peer_id} и лимитом {limit}")  # Логируем успешную отдачу логов
-        return jsonify({"items": messages, "peer_id": peer_id})  # Возвращаем JSON с логами
+        from_id = int(from_id_raw) if from_id_raw else None  # Преобразуем отправителя при наличии
+        limit = int(limit_raw) if limit_raw else MESSAGES_PAGE_SIZE  # Устанавливаем лимит выборки
+        limit = max(1, min(limit, 500))  # Ограничиваем диапазон лимита на одну подгрузку
+        offset = int(offset_raw) if offset_raw else 0  # Читаем смещение
+        offset = max(0, offset)  # Страхуем от отрицательного значения
+        messages = [
+            serialize_log(row)
+            for row in event_logger.fetch_messages(peer_id=peer_id, limit=limit, offset=offset, from_id=from_id)
+        ]  # Запрашиваем логи
+        log_service_event(
+            200,
+            f"Отдаём JSON с логами peer_id={peer_id} from_id={from_id} лимитом {limit} смещением {offset}",
+        )  # Логируем успешную отдачу логов
+        return jsonify({"items": messages, "peer_id": peer_id, "offset": offset, "from_id": from_id})  # Возвращаем JSON с логами
 
     @app.route("/attachments/<path:subpath>")
     def serve_attachment(subpath: str):  # Отдаем сохраненное вложение из папки
@@ -1784,18 +1817,18 @@ def build_dashboard_app(
     def full_logs():
         peer_id_raw = request.args.get("peer_id")  # Читаем фильтр чата из адресной строки
         peer_id = int(peer_id_raw) if peer_id_raw else None  # Преобразуем в число при наличии
-        limit_raw = request.args.get("limit")  # Читаем требуемый лимит
-        limit = int(limit_raw) if limit_raw else 500  # Преобразуем лимит в число
-        limit = max(1, min(limit, 1000))  # Ограничиваем лимит безопасными рамками
-        logs_payload = [serialize_log(row) for row in event_logger.fetch_messages(peer_id=peer_id, limit=limit)]  # Получаем список логов
+        logs_payload = [
+            serialize_log(row)
+            for row in event_logger.fetch_messages(peer_id=peer_id, limit=MESSAGES_PAGE_SIZE, offset=0)
+        ]  # Получаем стартовый список логов
         service_logs_payload = [serialize_service_event(row) for row in service_events.fetch_events(limit=50)]  # Получаем стартовые сервисные логи
-        log_service_event(200, f"Отдаём HTML со всеми логами peer_id={peer_id} (лимит {limit})")  # Фиксируем выдачу страницы логов
+        log_service_event(200, f"Отдаём HTML со всеми логами peer_id={peer_id} без общего лимита")  # Фиксируем выдачу страницы логов
         return render_template(
             "logs.html",  # Шаблон страницы логов
             initial_logs=logs_payload,  # Начальный список логов
             initial_peers=event_logger.list_peers(),  # Доступные чаты для фильтрации
             initial_peer_id=peer_id,  # Текущий выбранный чат
-            initial_limit=limit,  # Текущий выбранный лимит
+            initial_page_size=MESSAGES_PAGE_SIZE,  # Размер страницы для подгрузки
             initial_service_logs=service_logs_payload,  # Стартовый набор сервисных логов
         )  # Возвращаем HTML страницы
 

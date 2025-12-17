@@ -62,7 +62,7 @@
           </span> <!-- Конец бейджа -->
         </div> <!-- Конец блока бейджа -->
         <h1 class="fw-bold mb-1">Все сообщения</h1> <!-- Заголовок -->
-        <p class="text-secondary mb-0">До 1000 последних записей с фильтрацией по чатам.</p> <!-- Подзаголовок -->
+        <p class="text-secondary mb-0">Лента без общего лимита, старые записи догружаются при прокрутке.</p> <!-- Подзаголовок -->
       </div> <!-- Конец левой части -->
       <div class="d-flex flex-wrap gap-2"> <!-- Правая часть с кнопками -->
         <a href="/" class="btn btn-outline-light">Вернуться к дашборду</a> <!-- Кнопка назад -->
@@ -89,11 +89,7 @@
               <option value="">Все чаты</option> <!-- Опция по умолчанию -->
             </select> <!-- Конец селектора -->
           </div> <!-- Конец колонки -->
-          <div class="col-12 col-md-3"> <!-- Колонка лимита -->
-            <label class="form-label text-secondary small" for="limit-input">Лимит записей (до 1000)</label> <!-- Подпись -->
-            <input type="number" id="limit-input" name="limit" class="form-control bg-dark text-light border-secondary" min="1" max="1000" /> <!-- Поле лимита -->
-          </div> <!-- Конец колонки лимита -->
-          <div class="col-12 col-md-4 d-flex gap-2"> <!-- Колонка кнопок -->
+          <div class="col-12 col-md-7 d-flex gap-2"> <!-- Колонка кнопок -->
             <button type="submit" class="btn btn-primary flex-grow-1">Применить фильтр</button> <!-- Кнопка отправки -->
             <a href="/logs/full" class="btn btn-outline-light">Сбросить</a> <!-- Кнопка сброса -->
           </div> <!-- Конец колонки кнопок -->
@@ -209,12 +205,11 @@
     const initialLogs = {{ initial_logs|tojson }}; // Стартовые логи из шаблона
     const initialPeers = {{ initial_peers|tojson }}; // Стартовый список чатов
     const initialPeerId = {{ initial_peer_id|tojson }}; // Стартовый peer_id
-    const initialLimit = {{ initial_limit|tojson }}; // Стартовый лимит
+    const initialPageSize = {{ initial_page_size|tojson }}; // Размер страницы подгрузки
     const initialServiceLogs = {{ initial_service_logs|tojson }}; // Стартовые сервисные логи
 
     const logsBody = document.getElementById('logs-body'); // Тело таблицы логов
     const peerFilter = document.getElementById('peer-filter'); // Селектор чатов
-    const limitInput = document.getElementById('limit-input'); // Поле лимита
     const refreshBtn = document.getElementById('refresh-btn'); // Кнопка обновления
     const clearBtn = document.getElementById('clear-btn'); // Кнопка очистки логов сообщений
     const filtersForm = document.getElementById('filters-form'); // Форма фильтров
@@ -233,7 +228,11 @@
     const galleryApi = window.galleryBridge || {}; // Получаем общий API галереи из подключенного файла
     const chatApi = window.chatHistory || {}; // Получаем единый модуль истории чата
     let galleryCounter = 0; // Счетчик для генерации ключей галерей
-    let serviceOffset = 0; // Текущее смещение
+    let logOffset = Array.isArray(initialLogs) ? initialLogs.length : 0; // Смещение для следующей страницы логов
+    let hasMoreLogs = Array.isArray(initialLogs) && initialLogs.length === initialPageSize; // Флаг наличия следующих страниц логов
+    let isLoadingLogs = false; // Флаг процесса загрузки логов
+    let currentPeerId = initialPeerId; // Текущий активный фильтр чата
+    let serviceOffset = 0; // Текущее смещение сервисных логов
     let serviceTotal = 0; // Общее количество сервисных событий
     const serviceHashRequested = window.location.hash.includes('service-alerts'); // Флаг наличия якоря сервисных логов в URL
     if (serviceHashRequested) { // Если в адресе сразу указаны сервисные логи
@@ -305,16 +304,30 @@
       } // Конец условия
     } // Конец функции отрисовки чатов
 
-    function renderLogs(logs) { // Функция отрисовки таблицы логов
-      logsBody.innerHTML = ''; // Очищаем тело
-      if (galleryApi.resetGalleryStorePreserveActive) { // Проверяем наличие функции очистки галереи
+    function resetGalleryStore() { // Очищаем хранилище галереи перед полной перерисовкой
+      if (galleryApi.resetGalleryStorePreserveActive) { // Проверяем наличие функции очистки
         galleryApi.resetGalleryStorePreserveActive(); // Очищаем хранилище, сохраняя открытую галерею
-      } // Конец проверки наличия функции очистки
-      galleryCounter = 0; // Обнуляем счетчик ключей
-      if (!logs.length) { // Если массив пустой
-        logsBody.innerHTML = '<tr><td colspan="10" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
-        return; // Завершаем функцию
-      } // Конец проверки пустоты
+      } // Конец проверки наличия функции
+    } // Конец функции очистки галереи
+
+    function renderLogs(logs, { append = false } = {}) { // Функция отрисовки таблицы логов с дописыванием
+      if (!append) { // Если перерисовываем полностью
+        logsBody.innerHTML = ''; // Очищаем тело таблицы
+        resetGalleryStore(); // Сбрасываем галерею
+        galleryCounter = 0; // Сбрасываем счетчик ключей галереи
+      } // Конец проверки режима отрисовки
+      if (!Array.isArray(logs) || logs.length === 0) { // Проверяем наличие данных
+        if (!append) { // Если данных нет и это полная перерисовка
+          logsBody.innerHTML = '<tr id="logs-placeholder"><td colspan="10" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
+        } // Конец проверки режима
+        return; // Прерываем выполнение при отсутствии данных
+      } // Конец проверки массива данных
+      if (append) { // Если добавляем новые записи
+        const placeholderRow = document.getElementById('logs-placeholder'); // Ищем плейсхолдер
+        if (placeholderRow) { // Проверяем, найден ли плейсхолдер
+          placeholderRow.remove(); // Удаляем плейсхолдер перед добавлением данных
+        } // Конец проверки наличия плейсхолдера
+      } // Конец проверки режима добавления
       logs.forEach((log) => { // Перебираем логи
         const galleryKey = `log-${log.id ?? 'local'}-${galleryCounter++}`; // Формируем ключ галереи для записи
         const row = chatApi.buildLogsRow(log, galleryApi, galleryKey, { formatDate: formatDateTime }); // Собираем строку через единый модуль истории чата
@@ -332,7 +345,7 @@
         if (!response.ok) { // Проверяем код ответа
           throw new Error('Удаление завершилось ошибкой'); // Бросаем исключение при проблеме
         } // Конец проверки кода ответа
-        await refreshLogs(); // Перерисовываем таблицу после удаления
+        await loadLogs({ reset: true }); // Перерисовываем таблицу после удаления
       } catch (err) { // Обработка ошибки
         console.error('Не удалось удалить запись лога', err); // Логируем проблему
       } // Конец обработки
@@ -355,6 +368,14 @@
       }); // Конец цикла
     } // Конец функции отрисовки сервисных логов
 
+    function buildLogParams(offsetValue) { // Формируем параметры запроса логов
+      const params = { limit: initialPageSize, offset: offsetValue }; // Добавляем базовые параметры пагинации
+      if (currentPeerId) { // Если выбран чат
+        params.peer_id = currentPeerId; // Передаем peer_id
+      } // Конец проверки выбранного чата
+      return params; // Возвращаем параметры
+    } // Конец функции подготовки параметров
+
     async function fetchLogs(params) { // Функция запроса логов с сервера
       const searchParams = new URLSearchParams(params); // Создаем объект параметров
       const response = await fetch(`/api/logs?${searchParams.toString()}`); // Отправляем запрос
@@ -369,21 +390,36 @@
       return data; // Возвращаем полный ответ
     } // Конец функции запроса сервисных логов
 
-    async function refreshLogs() { // Функция обновления таблицы
-      try { // Блок попытки
-        const params = {}; // Объект параметров запроса
-        if (peerFilter.value) { // Если выбран чат
-          params.peer_id = peerFilter.value; // Добавляем фильтр чата
-        } // Конец условия
-        if (limitInput.value) { // Если задан лимит
-          params.limit = limitInput.value; // Добавляем лимит
-        } // Конец условия
-        const logs = await fetchLogs(params); // Получаем логи с сервера
-        renderLogs(logs); // Отрисовываем таблицу
-      } catch (err) { // Обработка ошибок
+    async function loadLogs({ reset = false } = {}) { // Функция подгрузки сообщений с поддержкой бесконечной ленты
+      if (isLoadingLogs) { // Проверяем, идет ли загрузка
+        return; // Прерываем повторный вызов
+      } // Конец проверки параллельной загрузки
+      if (!hasMoreLogs && !reset) { // Проверяем, есть ли еще данные при попытке догрузки
+        return; // Прерываем, если все записи уже загружены
+      } // Конец проверки наличия данных
+      if (reset) { // Если нужно начать загрузку с начала
+        logOffset = 0; // Сбрасываем смещение
+        hasMoreLogs = true; // Возвращаем флаг наличия данных
+        renderLogs([], { append: false }); // Очищаем таблицу перед новой загрузкой
+      } // Конец проверки сброса
+      isLoadingLogs = true; // Ставим флаг загрузки
+      try { // Блок попытки загрузки
+        const params = buildLogParams(logOffset); // Формируем параметры
+        const nextLogs = await fetchLogs(params); // Запрашиваем страницу логов
+        if (reset) { // Если это полная перезагрузка
+          renderLogs(nextLogs, { append: false }); // Рисуем таблицу заново
+        } else { // Если догружаем вниз
+          renderLogs(nextLogs, { append: true }); // Добавляем строки в конец
+        } // Конец ветвления режима
+        logOffset += nextLogs.length; // Увеличиваем смещение
+        hasMoreLogs = nextLogs.length === initialPageSize; // Обновляем флаг наличия данных
+      } catch (err) { // Обработка ошибки загрузки
         console.error('Не удалось обновить логи', err); // Пишем в консоль
-      } // Конец обработки
-    } // Конец функции обновления
+        hasMoreLogs = false; // Останавливаем дальнейшую догрузку
+      } finally { // Завершаем загрузку
+        isLoadingLogs = false; // Сбрасываем флаг загрузки
+      } // Конец блока завершения
+    } // Конец функции подгрузки логов
 
     async function clearLogs() { // Функция полной очистки логов сообщений
       const confirmed = window.confirm('Очистить все логи сообщений? Это действие удалит записи без возможности восстановления.'); // Спрашиваем подтверждение пользователя
@@ -392,7 +428,7 @@
       } // Конец проверки подтверждения
       try { // Пытаемся выполнить запрос
         await fetch('/api/logs/clear', { method: 'POST' }); // Отправляем POST-запрос на очистку логов сообщений
-        await refreshLogs(); // Перерисовываем таблицу после очистки
+        await loadLogs({ reset: true }); // Перерисовываем таблицу после очистки
       } catch (err) { // Обработка ошибок
         console.error('Не удалось очистить логи сообщений', err); // Пишем ошибку в консоль
       } // Конец обработки
@@ -433,9 +469,18 @@
       } // Конец обработки
     } // Конец функции очистки
 
+    function handleScrollForLogs() { // Обработчик прокрутки страницы для бесконечной ленты
+      const scrollPosition = window.scrollY + window.innerHeight; // Текущая позиция прокрутки
+      const threshold = document.documentElement.scrollHeight - 400; // Порог, при достижении которого начинаем подгрузку
+      if (scrollPosition >= threshold) { // Проверяем, достигнут ли порог
+        loadLogs(); // Запускаем подгрузку следующей страницы
+      } // Конец проверки порога
+    } // Конец обработчика прокрутки
+
     filtersForm.addEventListener('submit', (event) => { // Обработчик отправки формы
       event.preventDefault(); // Отменяем стандартное поведение
-      refreshLogs(); // Перезапрашиваем логи
+      currentPeerId = peerFilter.value || null; // Сохраняем выбранный чат
+      loadLogs({ reset: true }); // Перезапрашиваем логи с начала
     }); // Конец обработчика формы
 
     logsBody.addEventListener('click', (event) => { // Делегированный обработчик кликов по таблице логов
@@ -451,7 +496,7 @@
     }); // Конец делегированного обработчика
 
     refreshBtn.addEventListener('click', () => { // Обработчик кнопки обновления
-      refreshLogs(); // Перезапрашиваем логи
+      loadLogs({ reset: true }); // Перезапрашиваем логи с начала
     }); // Конец обработчика кнопки
 
     clearBtn.addEventListener('click', (event) => { // Обработчик кнопки очистки логов сообщений
@@ -504,12 +549,15 @@
       handleHashNavigation(); // Переключаем вкладки в зависимости от нового якоря
     }); // Конец обработчика изменения якоря
 
-    limitInput.value = initialLimit; // Устанавливаем стартовый лимит
     renderPeers(initialPeers || []); // Отрисовываем селектор чатов
-    renderLogs(initialLogs || []); // Отрисовываем стартовые логи
+    renderLogs(initialLogs || [], { append: false }); // Отрисовываем стартовые логи
     serviceTotal = (initialServiceLogs || []).length; // Запоминаем количество стартовых сервисных логов
     servicePageLabel.textContent = serviceTotal ? `Показано ${Math.min(serviceTotal, Number(serviceLimitInput.value) || 50)} из ${serviceTotal}` : 'Нет данных'; // Показываем подпись пагинации
     renderServiceLogs(initialServiceLogs || []); // Отрисовываем стартовые сервисные логи
+    window.addEventListener('scroll', handleScrollForLogs); // Подключаем бесконечную прокрутку для логов
+    if (hasMoreLogs) { // Если есть данные для дальнейшей загрузки
+      loadLogs(); // Запускаем подгрузку следующей страницы
+    } // Конец проверки наличия данных
     handleHashNavigation(); // Выбираем нужную вкладку с учетом якоря
   </script> <!-- Конец скрипта -->
 </body> <!-- Конец тела -->
