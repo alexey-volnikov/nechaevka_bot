@@ -123,9 +123,12 @@
           <div class="text-secondary small">Файл автоматически создается рядом с проектом и пополняется при каждом событии.</div> <!-- Подпись -->
         </div> <!-- Конец левой колонки -->
         <div class="text-secondary small"> <!-- Правая колонка -->
-          <div><span class="text-light">Путь:</span> <span id="storage-path">—</span></div> <!-- Строка пути -->
-          <div><span class="text-light">Размер:</span> <span id="storage-size">—</span></div> <!-- Строка размера -->
-          <div><span class="text-light">Статус:</span> <span id="storage-status">—</span></div> <!-- Строка статуса -->
+          <div><span class="text-light">Путь базы:</span> <span id="storage-path">—</span></div> <!-- Строка пути базы -->
+          <div><span class="text-light">Размер базы:</span> <span id="storage-size">—</span></div> <!-- Строка размера базы -->
+          <div><span class="text-light">Статус базы:</span> <span id="storage-status">—</span></div> <!-- Строка статуса базы -->
+          <div class="mt-2"><span class="text-light">Размер вложений:</span> <span id="attachments-size">—</span></div> <!-- Строка размера вложений -->
+          <div><span class="text-light">Папка вложений:</span> <span id="attachments-path">—</span></div> <!-- Строка пути вложений -->
+          <div><span class="text-light">Статус вложений:</span> <span id="attachments-status">—</span></div> <!-- Строка статуса вложений -->
         </div> <!-- Конец правой колонки -->
       </div> <!-- Конец контейнера -->
     </div> <!-- Конец блока информации о файле базы -->
@@ -268,6 +271,9 @@
     const storagePathEl = document.getElementById('storage-path'); // Путь до файла базы
     const storageSizeEl = document.getElementById('storage-size'); // Размер файла базы
     const storageStatusEl = document.getElementById('storage-status'); // Статус существования файла
+    const attachmentsPathEl = document.getElementById('attachments-path'); // Путь до папки вложений
+    const attachmentsSizeEl = document.getElementById('attachments-size'); // Размер всех вложений
+    const attachmentsStatusEl = document.getElementById('attachments-status'); // Статус существования папки вложений
     const importantBadge = document.getElementById('important-badge'); // Бейдж важных оповещений
     const timeRangeSelect = document.getElementById('time-range-select'); // Селектор выбора диапазона времени
     const galleryApi = window.galleryBridge || {}; // Получаем общий API галереи из подключенного файла
@@ -596,6 +602,10 @@
       storageSizeEl.textContent = formatStorageSize(storage.size_bytes || 0); // Показываем размер с автоматическим выбором единиц
       storageStatusEl.textContent = storage.exists ? 'Создан и доступен' : 'Файла пока нет'; // Показываем статус
       storageStatusEl.className = storage.exists ? 'text-success' : 'text-warning'; // Меняем цвет статуса
+      attachmentsPathEl.textContent = storage.attachments_path || '—'; // Показываем путь до папки вложений
+      attachmentsSizeEl.textContent = formatStorageSize(storage.attachments_size_bytes || 0); // Показываем суммарный размер вложений
+      attachmentsStatusEl.textContent = storage.attachments_exists ? 'Скачанные вложения найдены' : 'Папка вложений ещё не создана'; // Показываем статус папки вложений
+      attachmentsStatusEl.className = storage.attachments_exists ? 'text-success' : 'text-warning'; // Меняем цвет статуса папки вложений
     } // Конец функции
 
     function updateImportantBadge(count) { // Функция обновления бейджа важных сообщений
