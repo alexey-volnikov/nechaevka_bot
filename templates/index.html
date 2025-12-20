@@ -319,13 +319,34 @@
     } // Конец условия демо
 
     const initialTimeline = Array.isArray(initialStats.timeline) ? [...initialStats.timeline].sort((a, b) => new Date(a?.time || 0).valueOf() - new Date(b?.time || 0).valueOf()) : []; // Готовим отсортированный таймлайн для первичной отрисовки
+    function smoothTimelineSeries(points, windowSize = 5) { // Функция сглаживания пиков на графике
+      const safePoints = Array.isArray(points) ? points : []; // Нормализуем входной массив точек
+      const normalizedWindow = Math.max(1, windowSize | 1); // Делаем размер окна нечётным и не менее единицы
+      const halfWindow = Math.floor(normalizedWindow / 2); // Считаем половину окна для симметричного прохода
+      return safePoints.map((point, index) => { // Формируем новый массив сглаженных точек
+        let sum = 0; // Инициализируем сумму значений
+        let count = 0; // Инициализируем счётчик участвующих точек
+        for (let shift = -halfWindow; shift <= halfWindow; shift += 1) { // Проходим по соседним точкам в пределах окна
+          const neighbor = safePoints[index + shift]; // Берём соседнюю точку по смещению
+          if (!neighbor) { // Проверяем наличие соседней точки
+            continue; // Пропускаем выход за границы массива
+          } // Конец проверки наличия соседа
+          const value = Number(neighbor.messages ?? 0); // Берём значение сообщений как число с защитой от undefined
+          sum += value; // Добавляем значение к сумме
+          count += 1; // Увеличиваем количество учтённых точек
+        } // Конец прохода по окну
+        const averaged = count > 0 ? sum / count : Number(point.messages ?? 0); // Рассчитываем среднее или возвращаем исходное значение
+        return { ...point, messages: averaged }; // Возвращаем новую точку с сохранением времени и сглаженным значением
+      }); // Конец формирования точки
+    } // Конец функции сглаживания
+    const smoothedInitialTimeline = smoothTimelineSeries(initialTimeline, 5); // Получаем сглаженный таймлайн для первой отрисовки
     const ctx = document.getElementById('events-chart'); // Получаем холст графика
     const chart = new Chart(ctx, { // Создаем график
       type: 'line', // Тип графика
       data: { // Данные графика
-        labels: initialTimeline.map((p) => formatDateTime(p.time)), // Метки времени в локальном формате
+        labels: smoothedInitialTimeline.map((p) => formatDateTime(p.time)), // Метки времени в локальном формате
         datasets: [ // Наборы данных
-          { label: 'Сообщения', data: initialTimeline.map((p) => p.messages), borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.25)', tension: 0.3, fill: true }, // Линия сообщений
+          { label: 'Сообщения', data: smoothedInitialTimeline.map((p) => p.messages), borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.25)', tension: 0.45, cubicInterpolationMode: 'monotone', fill: true }, // Линия сообщений с усиленным сглаживанием
         ], // Конец наборов
       }, // Конец данных
       options: { // Настройки графика
@@ -578,9 +599,10 @@
       const safeStats = stats || {}; // Нормализуем объект статистики
       const safeTimeline = Array.isArray(safeStats.timeline) ? safeStats.timeline : []; // Готовим безопасный массив таймлайна
       const normalizedTimeline = [...safeTimeline].sort((a, b) => new Date(a?.time || 0).valueOf() - new Date(b?.time || 0).valueOf()); // Сортируем точки по времени для точного графика
+      const smoothedTimeline = smoothTimelineSeries(normalizedTimeline, 5); // Применяем сглаживание к линии сообщений
       messagesEl.textContent = safeStats.messages ?? 0; // Обновляем количество сообщений
-      chart.data.labels = normalizedTimeline.map((p) => formatDateTime(p.time)); // Обновляем метки графика в локальном формате
-      chart.data.datasets[0].data = normalizedTimeline.map((p) => p.messages ?? 0); // Обновляем линию сообщений
+      chart.data.labels = smoothedTimeline.map((p) => formatDateTime(p.time)); // Обновляем метки графика в локальном формате
+      chart.data.datasets[0].data = smoothedTimeline.map((p) => p.messages ?? 0); // Обновляем линию сообщений
       chart.update(); // Перерисовываем график
       if (safeStats.range_minutes && timeRangeSelect) { // Если в ответе есть диапазон и селектор существует
         selectedRange = Number(safeStats.range_minutes); // Обновляем выбранный диапазон
