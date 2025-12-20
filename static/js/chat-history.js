@@ -10,6 +10,15 @@
     return safeLabel; // Возвращаем только текст, если аватара нет
   } // Конец функции сборки подписи с аватаром
 
+  function buildAvatarBubble(label, avatarUrl) { // Строим компактный аватар без дублирования подписи в карточке
+    const safeLabel = label || '—'; // Берём подпись или плейсхолдер
+    const initial = safeLabel.trim().charAt(0).toUpperCase() || '—'; // Вычисляем первую букву для плейсхолдера
+    if (avatarUrl) { // Если есть ссылка на аватар
+      return `<div class="avatar-shell"><img src="${avatarUrl}" alt="Аватар" class="avatar-inline" loading="lazy" /></div>`; // Показываем только картинку без лишнего текста
+    } // Конец проверки наличия ссылки
+    return `<div class="avatar-shell avatar-shell-placeholder" title="${safeLabel}">${initial}</div>`; // Рисуем кружок с первой буквой и подсказкой вместо дублирования имени
+  } // Конец функции построения аватара для карточки
+
   function buildPeerCell(message, options = {}) { // Строим ячейку чата с учетом настроек
     const chatName = message.peer_title || 'Чат без названия'; // Определяем название чата
     const avatarUrl = message.peer_avatar; // Читаем аватар чата
@@ -93,7 +102,7 @@
     const hasAttachments = (normalizedAttachments?.length || 0) > 0 || (normalizedCopyHistory?.length || 0) > 0; // Проверяем наличие вложений или репостов
     const textCell = message.text ?? ''; // Берем текст сообщения или оставляем пустую строку
     card.innerHTML = `
-      <div class="chat-avatar-col">${buildAvatarLabel(message.from_name || message.peer_title, message.from_avatar || message.peer_avatar)}</div>
+      <div class="chat-avatar-col">${buildAvatarBubble(message.from_name || message.peer_title, message.from_avatar || message.peer_avatar)}</div>
       <div class="chat-bubble">
         <div class="chat-bubble-header">
           <div class="chat-bubble-meta">${peerCell}</div>
@@ -128,7 +137,7 @@
     const logIdCell = log.id ?? '—'; // Берем ID записи в базе
     const deleteButton = `<button type="button" class="btn btn-sm btn-outline-danger delete-log-btn" data-log-id="${log.id}">Удалить</button>`; // Формируем кнопку удаления
     card.innerHTML = `
-      <div class="chat-avatar-col">${buildAvatarLabel(log.from_name || log.peer_title, log.from_avatar || log.peer_avatar)}</div>
+      <div class="chat-avatar-col">${buildAvatarBubble(log.from_name || log.peer_title, log.from_avatar || log.peer_avatar)}</div>
       <div class="chat-bubble"> 
         <div class="chat-bubble-header">
           <div class="chat-bubble-meta">${peerCell}</div>
@@ -172,7 +181,7 @@
       metaChunks.push(`<span class="chat-bubble-author">${authorCell}</span>`); // Добавляем подпись отправителя
     } // Конец проверки автора
     card.innerHTML = `
-      <div class="chat-avatar-col">${buildAvatarLabel(message.from_name || message.peer_title, message.from_avatar || message.peer_avatar)}</div>
+      <div class="chat-avatar-col">${buildAvatarBubble(message.from_name || message.peer_title, message.from_avatar || message.peer_avatar)}</div>
       <div class="chat-bubble">
         <div class="chat-bubble-header">${metaChunks.join(' · ')}</div>
         ${hasAttachments ? `<div class="chat-bubble-attachments">${contentCell}</div>` : ''}
@@ -194,6 +203,7 @@
 
   global.chatHistory = { // Экспортируем публичное API
     buildAvatarLabel, // Выносим сборку подписи с аватаром
+    buildAvatarBubble, // Выносим сборку аватарки без текста для карточек
     buildPeerCell, // Выносим сборку ячейки чата
     buildSenderCell, // Выносим сборку ячейки отправителя
     buildReplyPreview, // Выносим превью ответа
