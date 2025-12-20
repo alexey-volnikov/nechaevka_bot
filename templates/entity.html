@@ -29,8 +29,8 @@
     .attachment-generic { border-color: rgba(148, 163, 184, 0.5); color: #e2e8f0; } /* Цвет прочего */
     .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачные ячейки */
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатость */
-    .chat-table { table-layout: fixed; width: 100%; } /* Фиксированная сетка колонок, чтобы сжимать ширину без переносов */
-    .chat-table th, .chat-table td { font-size: 11px; padding: 4px 8px; white-space: nowrap; } /* Минимизируем шрифт, поджимаем отступы и запрещаем переносы, чтобы все строки оставались в одну линию */
+    .chat-table { table-layout: auto; width: 100%; } /* Автоматическое распределение ширины колонок без лишних пустот и растягивания */
+    .chat-table th, .chat-table td { font-size: 11px; padding: 2px 6px; white-space: nowrap; } /* Минимизируем шрифт, еще сильнее поджимаем отступы и запрещаем переносы, чтобы все строки оставались в одну линию */
     .chat-table td { overflow: hidden; text-overflow: ellipsis; } /* Обрезаем длинные значения с многоточием вместо переноса строки */
     .text-secondary-small { color: #94a3b8; font-size: 13px; } /* Серый мелкий текст */
     .gallery-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 16px; } /* Затемненный фон галереи */
