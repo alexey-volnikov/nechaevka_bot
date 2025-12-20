@@ -29,8 +29,17 @@
     .attachment-generic { border-color: rgba(148, 163, 184, 0.5); color: #e2e8f0; } /* Цвет прочего */
     .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачные ячейки */
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатость */
-    .chat-table { table-layout: fixed; width: 100%; } /* Фиксированная сетка, чтобы ширина колонок не расползалась и строки оставались на месте */
-    .chat-table th, .chat-table td { font-size: 11px; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; } /* Минимальный шрифт, плотные отступы и обрезка длинных значений внутри фиксированной таблицы */
+    .chat-table { table-layout: fixed; width: 100%; } /* Сетка для вспомогательных таблиц */
+    .chat-table th, .chat-table td { font-size: 11px; padding: 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; } /* Компактный шрифт для таблиц характеристик */
+    .chat-feed { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; } /* Лента сообщений в виде чата */
+    .chat-item { display: flex; gap: 12px; align-items: flex-start; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 12px; } /* Карточка сообщения */
+    .chat-avatar-col { width: 52px; display: flex; justify-content: center; } /* Узкая колонка под аватар */
+    .chat-bubble { flex: 1; display: flex; flex-direction: column; gap: 8px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 14px; padding: 10px 12px; } /* Пузырь сообщения */
+    .chat-bubble-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: #cbd5e1; } /* Заголовок пузыря с метаданными */
+    .chat-bubble-meta { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: #e2e8f0; } /* Название чата */
+    .chat-bubble-author { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #e2e8f0; } /* Имя отправителя */
+    .chat-bubble-attachments { display: flex; flex-wrap: wrap; gap: 6px; } /* Блок вложений */
+    .chat-bubble-text { font-size: 14px; line-height: 1.5; color: #e2e8f0; white-space: pre-wrap; } /* Текст сообщения */
     .col-time { width: 120px; } /* Узкая стабильная колонка времени */
     .col-chat { width: 200px; } /* Колонка названия чата средней ширины */
     .col-author { width: 200px; } /* Колонка отправителя средней ширины */
@@ -46,7 +55,8 @@
     .gallery-nav-btn { min-width: 42px; } /* Минимальная ширина кнопок навигации */
     .gallery-thumb { margin: 2px; } /* Отступы миниатюр */
     .gallery-thumb.active { border-width: 2px !important; } /* Подсветка активной миниатюры */
-    .message-deleted > td { background: rgba(248, 113, 113, 0.12) !important; color: #fecdd3; } /* Подсветка удаленных сообщений на страницах профиля */
+    .message-deleted { border-color: rgba(248, 113, 113, 0.35) !important; } /* Обводка карточки удаленного сообщения */
+    .message-deleted .chat-bubble { background: rgba(127, 29, 29, 0.3); border-color: rgba(248, 113, 113, 0.5); color: #fecdd3; } /* Красноватый фон и текст внутри пузыря удаленного сообщения */
     .message-deleted a { color: #fecdd3; } /* Красноватый цвет ссылок внутри удаленных сообщений */
   </style> <!-- Конец пользовательских стилей -->
 </head> <!-- Конец шапки -->
@@ -114,31 +124,12 @@
           <span class="badge-soft badge rounded-pill">Локальное время</span> <!-- Бейдж таймзоны -->
         </div> <!-- Конец правой части -->
       </div> <!-- Конец заголовка -->
-      <div class="table-responsive"> <!-- Обертка таблицы -->
-        {% set show_chat_column = entity_type != 'chat' %} <!-- Флаг отображения столбца чата (скрываем в профиле чата) -->
-        {% set show_sender_column = entity_type == 'chat' %} <!-- Флаг отображения столбца отправителя (скрываем в профиле человека) -->
-        {% set column_count = 3 + (1 if show_chat_column else 0) + (1 if show_sender_column else 0) %} <!-- Рассчитываем количество столбцов для корректного colspan -->
-        <table class="table table-striped align-middle mb-0 chat-table"> <!-- Таблица с уменьшенным шрифтом -->
-          <thead class="text-secondary"> <!-- Заголовок таблицы -->
-            <tr> <!-- Строка заголовков -->
-              <th class="col-time text-nowrap">Время</th> <!-- Колонка времени без переноса -->
-              {% if show_chat_column %} <!-- Если нужно показать столбец чата -->
-              <th class="col-chat text-nowrap">Чат</th> <!-- Колонка чата без переноса -->
-              {% endif %} <!-- Конец проверки столбца чата -->
-              {% if show_sender_column %} <!-- Если нужно показать столбец отправителя -->
-              <th class="col-author text-nowrap">Отправитель</th> <!-- Колонка автора без переноса -->
-              {% endif %} <!-- Конец проверки столбца отправителя -->
-              <th class="col-attachments">Вложения</th> <!-- Колонка вложений -->
-              <th class="col-text">Текст</th> <!-- Колонка текста -->
-            </tr> <!-- Конец строки заголовков -->
-          </thead> <!-- Конец заголовка -->
-          <tbody id="messages-body"> <!-- Тело таблицы с идентификатором для скрипта рендера -->
-            <tr id="messages-placeholder"> <!-- Плейсхолдер пустой таблицы -->
-              <td colspan="{{ column_count }}" class="text-secondary">Нет данных</td> <!-- Текст плейсхолдера с динамическим количеством столбцов -->
-            </tr> <!-- Конец плейсхолдера -->
-          </tbody> <!-- Конец тела таблицы -->
-        </table> <!-- Конец таблицы -->
-      </div> <!-- Конец обертки таблицы -->
+
+      {% set show_chat_column = entity_type != 'chat' %} <!-- Флаг отображения столбца чата (скрываем в профиле чата) -->
+      {% set show_sender_column = entity_type == 'chat' %} <!-- Флаг отображения столбца отправителя (скрываем в профиле человека) -->
+      <div id="messages-body" class="chat-feed"> <!-- Лента сообщений профиля -->
+        <div id="messages-placeholder" class="text-secondary">Нет данных</div> <!-- Плейсхолдер ленты -->
+      </div> <!-- Конец ленты сообщений -->
 
 
     </div> <!-- Конец блока таблицы -->
@@ -147,7 +138,7 @@
   <script src="{{ url_for('static', filename='js/gallery.js') }}"></script> <!-- Подключаем общий скрипт галереи -->
   <script src="{{ url_for('static', filename='js/chat-history.js') }}"></script> <!-- Подключаем единый модуль истории чата -->
   <script> // Начало скрипта динамической таблицы
-    const tableBody = document.getElementById('messages-body'); // Находим тело таблицы сообщений
+    const tableBody = document.getElementById('messages-body'); // Находим ленту сообщений профиля
     const galleryApi = window.galleryBridge || {}; // Подготавливаем общий API галереи
     const chatApi = window.chatHistory || {}; // Подготавливаем единый модуль истории чата
     const serverMessages = {{ payload.messages | tojson }}; // Забираем стартовые сообщения с вложениями из шаблона
@@ -174,35 +165,36 @@
       } // Конец проверки наличия функции сброса
     }; // Конец вспомогательной функции
 
-    const renderMessages = (messages, { append = false } = {}) => { // Функция отрисовки строк таблицы с поддержкой дописывания
+    const renderMessages = (messages, { append = false } = {}) => { // Функция отрисовки ленты сообщений с дописыванием
       if (!append) { // Если требуется полная перерисовка
-        tableBody.innerHTML = ''; // Очищаем тело таблицы
+        tableBody.innerHTML = ''; // Очищаем ленту
         resetGalleryStore(); // Очищаем хранилище галереи
         galleryCounter = 0; // Сбрасываем счетчик ключей галереи
       } // Конец проверки режима перерисовки
       if (!Array.isArray(messages) || messages.length === 0) { // Проверяем наличие данных
         if (!append) { // Отрисовываем плейсхолдер только при полном режиме
-          const emptyRow = document.createElement('tr'); // Создаем строку для плейсхолдера
+          const emptyRow = document.createElement('div'); // Создаем блок для плейсхолдера
           emptyRow.id = 'messages-placeholder'; // Добавляем идентификатор плейсхолдера
-          emptyRow.innerHTML = `<td colspan="{{ column_count }}" class="text-secondary">Нет данных</td>`; // Подставляем текст плейсхолдера
-          tableBody.appendChild(emptyRow); // Добавляем строку в таблицу
+          emptyRow.className = 'text-secondary'; // Ставим мягкий цвет текста
+          emptyRow.textContent = 'Нет данных'; // Подставляем текст плейсхолдера
+          tableBody.appendChild(emptyRow); // Добавляем блок в ленту
         } // Конец проверки режима
         return; // Завершаем выполнение при отсутствии данных
       } // Конец проверки наличия данных
       if (append) { // Если добавляем новые записи к существующим
-        const placeholderRow = document.getElementById('messages-placeholder'); // Пытаемся найти плейсхолдер пустой таблицы
+        const placeholderRow = document.getElementById('messages-placeholder'); // Пытаемся найти плейсхолдер пустой ленты
         if (placeholderRow) { // Если плейсхолдер найден
           placeholderRow.remove(); // Удаляем его перед добавлением настоящих данных
         } // Конец проверки наличия плейсхолдера
       } // Конец проверки режима добавления
       messages.forEach((msg) => { // Перебираем все сообщения
         const galleryKey = `entity-msg-${galleryCounter++}`; // Формируем уникальный ключ галереи
-        const row = chatApi.buildEntityRow(msg, galleryApi, galleryKey, { // Сборка строки через единый модуль истории чата
+        const row = chatApi.buildEntityRow(msg, galleryApi, galleryKey, { // Сборка карточки через единый модуль истории чата
           showChatColumn, // Передаем флаг столбца чата
           showSenderColumn, // Передаем флаг столбца отправителя
           formatDate, // Передаем функцию форматирования времени
-        }); // Завершаем сборку строки
-        tableBody.appendChild(row); // Добавляем готовую строку в таблицу
+        }); // Завершаем сборку карточки
+        tableBody.appendChild(row); // Добавляем готовую карточку в ленту
       }); // Конец перебора сообщений
     }; // Конец функции рендера
 

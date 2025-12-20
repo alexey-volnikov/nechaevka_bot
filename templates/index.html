@@ -18,14 +18,19 @@
     .card-title { font-weight: 700; letter-spacing: 0.02em; } /* Заголовок карточек */
     .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачный фон таблицы */
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатая таблица */
-    .chat-table { table-layout: fixed; width: 100%; } /* Фиксированная сетка, чтобы ширина колонок была предсказуемой и не уезжала */
-    .chat-table th, .chat-table td { font-size: 11px; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; } /* Минимальный шрифт, узкие отступы и жесткое ограничение ширины с многоточием внутри фиксированной таблицы */
-    .col-time { width: 120px; } /* Колонка времени узкая и стабильная */
-    .col-chat { width: 200px; } /* Колонка названия чата средней ширины */
-    .col-author { width: 200px; } /* Колонка отправителя средней ширины */
-    .col-reply { width: 240px; } /* Колонка ответа с запасом под текст */
-    .col-attachments { width: 160px; } /* Колонка вложений под бейджи */
-    .col-text { width: 100%; } /* Текст сообщения занимает остаток строки и режется многоточием */
+    .chat-table { table-layout: fixed; width: 100%; } /* Сетка для таблиц диалогов и подсказок */
+    .chat-table th, .chat-table td { font-size: 11px; padding: 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; } /* Компактный шрифт для таблиц справочной информации */
+    .chat-feed { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; } /* Вертикальная лента сообщений без маркеров и с равномерными отступами */
+    .chat-item { display: flex; gap: 12px; align-items: flex-start; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 12px; } /* Карточка сообщения в стиле мессенджера */
+    .chat-avatar-col { width: 52px; display: flex; justify-content: center; } /* Узкая колонка под аватар слева */
+    .chat-bubble { flex: 1; display: flex; flex-direction: column; gap: 8px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 14px; padding: 10px 12px; } /* Основной пузырь с текстом и вложениями */
+    .chat-bubble-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: #cbd5e1; } /* Верхняя строка с чатом и временем */
+    .chat-bubble-meta { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: #e2e8f0; } /* Название чата в пузыре */
+    .chat-bubble-author { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #e2e8f0; } /* Имя отправителя с аватаром */
+    .chat-bubble-reply { border-left: 3px solid rgba(148, 163, 184, 0.4); padding-left: 10px; color: #cbd5e1; font-size: 12px; } /* Блок превью ответа с полоской слева */
+    .chat-bubble-attachments { display: flex; flex-wrap: wrap; gap: 6px; } /* Группа вложений внутри пузыря */
+    .chat-bubble-text { font-size: 14px; line-height: 1.5; color: #e2e8f0; white-space: pre-wrap; } /* Основной текст сообщения с переносами */
+    .chat-bubble-footer { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: #cbd5e1; } /* Подвал карточки с ID и кнопками */
     .pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.4); color: #cbd5e1; font-size: 13px; } /* Пилюли статуса */
     .stat-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; } /* Точка индикатора */
     .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
@@ -63,7 +68,8 @@
     .gallery-nav-btn { min-width: 42px; } /* Минимальная ширина кнопок навигации */
     .gallery-thumb { margin: 2px; } /* Отступы кнопок миниатюр */
     .gallery-thumb.active { border-width: 2px !important; } /* Подсветка активного вложения */
-    .message-deleted > td { background: rgba(248, 113, 113, 0.12) !important; color: #fecdd3; } /* Красноватый фон и текст для удаленных сообщений */
+    .message-deleted { border-color: rgba(248, 113, 113, 0.35) !important; } /* Обводка карточки для удаленных сообщений */
+    .message-deleted .chat-bubble { background: rgba(127, 29, 29, 0.3); border-color: rgba(248, 113, 113, 0.5); color: #fecdd3; } /* Красноватый фон пузыря удаленного сообщения */
     .message-deleted a { color: #fecdd3; } /* Красноватый цвет ссылок внутри удаленных сообщений */
   </style> <!-- Конец пользовательских стилей -->
 </head> <!-- Конец заголовка -->
@@ -235,25 +241,9 @@
               </a> <!-- Конец кнопки -->
             </div> <!-- Конец контейнера кнопок -->
           </div> <!-- Конец заголовка -->
-          <div class="table-responsive"> <!-- Обертка таблицы -->
-            <table class="table table-sm table-striped align-middle mb-0 chat-table"> <!-- Таблица сообщений с уменьшенным шрифтом -->
-              <thead class="text-secondary"> <!-- Заголовок таблицы -->
-                <tr> <!-- Строка заголовка -->
-                  <th class="col-time text-nowrap">Время</th> <!-- Заголовок столбца времени без переноса строки -->
-                  <th class="col-chat text-nowrap">Чат</th> <!-- Заголовок столбца без переноса, чтобы название умещалось целиком -->
-                  <th class="col-author text-nowrap">Отправитель</th> <!-- Заголовок столбца с автором и пометкой бота без переноса строки -->
-                  <th class="col-reply">Ответ</th> <!-- Заголовок столбца -->
-                  <th class="col-attachments">Вложения</th> <!-- Заголовок столбца -->
-                  <th class="col-text">Текст</th> <!-- Заголовок столбца -->
-                </tr> <!-- Конец строки заголовка -->
-              </thead> <!-- Конец заголовка таблицы -->
-              <tbody id="messages-body"> <!-- Тело таблицы -->
-                <tr> <!-- Строка-заглушка -->
-                  <td colspan="6" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
-                </tr> <!-- Конец строки-заглушки -->
-              </tbody> <!-- Конец тела таблицы -->
-            </table> <!-- Конец таблицы -->
-          </div> <!-- Конец обертки таблицы -->
+          <div id="messages-body" class="chat-feed"> <!-- Лента сообщений в стиле чата -->
+            <div class="text-secondary">Нет данных</div> <!-- Плейсхолдер, если лента пуста -->
+          </div> <!-- Конец ленты сообщений -->
         </div> <!-- Конец карточки сообщений -->
       </div> <!-- Конец единственной колонки -->
     </div> <!-- Конец строки для сообщений -->
@@ -274,7 +264,7 @@
     const demoMode = {{ 'true' if demo_mode else 'false' }}; // Флаг демо-режима
 
     const messagesEl = document.getElementById('messages-count'); // Находим элемент сообщений
-    const messagesBody = document.getElementById('messages-body'); // Тело таблицы сообщений
+    const messagesBody = document.getElementById('messages-body'); // Лента сообщений в стиле мессенджера
     const conversationsBody = document.getElementById('conversations-body'); // Тело таблицы диалогов
     const groupNameEl = document.getElementById('group-name'); // Заголовок сообщества
     const groupIdEl = document.getElementById('group-id'); // ID сообщества
@@ -378,27 +368,28 @@
       return messageKeyParts.join('::'); // Склеиваем части в строку
     }; // Конец функции формирования ключа
 
-    const ensurePlaceholder = () => { // Отрисовываем плейсхолдер при пустой таблице
+    const ensurePlaceholder = () => { // Отрисовываем плейсхолдер при пустой ленте
       const placeholderRow = document.getElementById('messages-placeholder'); // Ищем существующий плейсхолдер
       if (placeholderRow) { // Если плейсхолдер уже есть
         return; // Ничего не делаем
       } // Конец проверки наличия
-      const row = document.createElement('tr'); // Создаем строку для плейсхолдера
+      const row = document.createElement('div'); // Создаем блок для плейсхолдера
       row.id = 'messages-placeholder'; // Добавляем идентификатор
-      row.innerHTML = '<td colspan="6" class="text-secondary">Нет данных</td>'; // Заполняем текст плейсхолдера с учетом новой колонки времени
-      messagesBody.appendChild(row); // Добавляем строку в таблицу
+      row.className = 'text-secondary'; // Ставим мягкий цвет текста
+      row.textContent = 'Нет данных'; // Заполняем текст плейсхолдера
+      messagesBody.appendChild(row); // Добавляем блок в ленту
     }; // Конец функции плейсхолдера
 
     const clearPlaceholder = () => { // Удаляем плейсхолдер, если он есть
-      const placeholderRow = document.getElementById('messages-placeholder'); // Ищем строку плейсхолдера
+      const placeholderRow = document.getElementById('messages-placeholder'); // Ищем блок плейсхолдера
       if (placeholderRow) { // Если нашли
-        placeholderRow.remove(); // Удаляем строку
+        placeholderRow.remove(); // Удаляем блок
       } // Конец проверки наличия
     }; // Конец функции удаления плейсхолдера
 
     const renderMessagesChunk = (messages, { mode = 'append' } = {}) => { // Рисуем часть сообщений с учетом режима
-      if (mode === 'replace') { // Если нужно полностью перерисовать таблицу
-        messagesBody.innerHTML = ''; // Полностью очищаем тело таблицы
+      if (mode === 'replace') { // Если нужно полностью перерисовать ленту
+        messagesBody.innerHTML = ''; // Полностью очищаем ленту
         resetGalleryStore(); // Сбрасываем состояние галереи
         renderedMessageKeys.clear(); // Очищаем множество ключей
         messageGalleryCounter = 0; // Обнуляем счетчик галереи
@@ -409,7 +400,7 @@
         } // Конец проверки режима
         return; // Завершаем выполнение
       } // Конец проверки наличия данных
-      clearPlaceholder(); // Убираем плейсхолдер перед вставкой новых строк
+      clearPlaceholder(); // Убираем плейсхолдер перед вставкой новых карточек
       const fragment = document.createDocumentFragment(); // Создаем фрагмент для батчевой вставки
       messages.forEach((msg) => { // Перебираем все сообщения из порции
         const messageKey = buildMessageKey(msg); // Формируем ключ текущего сообщения
@@ -418,13 +409,13 @@
         } // Конец проверки дубля
         renderedMessageKeys.add(messageKey); // Сохраняем ключ как отрисованный
         const galleryKey = `msg-${msg.id ?? 'local'}-${messageGalleryCounter++}`; // Генерируем ключ для галереи
-        const row = chatApi.buildDashboardRow(msg, galleryApi, galleryKey, { isNew: mode === 'prepend', formatDate: formatDateTime }); // Собираем строку через модуль истории и передаем форматирование времени
-        fragment.appendChild(row); // Добавляем строку в фрагмент
+        const row = chatApi.buildDashboardRow(msg, galleryApi, galleryKey, { isNew: mode === 'prepend', formatDate: formatDateTime }); // Собираем карточку через модуль истории и передаем форматирование времени
+        fragment.appendChild(row); // Добавляем карточку в фрагмент
       }); // Конец перебора порции
       if (mode === 'prepend') { // Если нужно добавить новые строки сверху
-        messagesBody.prepend(fragment); // Вставляем фрагмент в начало таблицы
+        messagesBody.prepend(fragment); // Вставляем фрагмент в начало ленты
       } else { // Иначе добавляем в конец
-        messagesBody.appendChild(fragment); // Вставляем фрагмент в конец таблицы
+        messagesBody.appendChild(fragment); // Вставляем фрагмент в конец ленты
       } // Конец проверки режима вставки
     }; // Конец функции рендера порции
 

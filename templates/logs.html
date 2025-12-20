@@ -14,18 +14,19 @@
     .badge-soft { background: rgba(99, 102, 241, 0.15); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.35); } /* Мягкий бейдж */
     .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачные ячейки */
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатость */
-    .chat-table { table-layout: fixed; width: 100%; } /* Фиксированная сетка, чтобы ширина колонок была предсказуемой и сообщения не уезжали за экран */
-    .chat-table th, .chat-table td { font-size: 11px; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; } /* Минимальный шрифт, узкие отступы и жесткое ограничение ширины ячеек с многоточием */
-    .col-time { width: 120px; } /* Узкая стабильная колонка времени */
-    .col-chat { width: 200px; } /* Средняя колонка для названия чата */
-    .col-author { width: 200px; } /* Средняя колонка для отправителя */
-    .col-flag { width: 90px; } /* Узкая колонка флага бота */
-    .col-reply { width: 240px; } /* Колонка ответа с запасом под текст */
-    .col-attachments { width: 160px; } /* Колонка вложений под бейджи */
-    .col-text { width: 100%; } /* Основной текст занимает остаток строки и обрезается многоточием */
-    .col-id { width: 110px; } /* Колонка идентификатора сообщения */
-    .col-log-id { width: 110px; } /* Колонка идентификатора записи лога */
-    .col-actions { width: 120px; } /* Колонка для кнопок действий */
+    .chat-table { table-layout: fixed; width: 100%; } /* Сетка для вспомогательных таблиц */
+    .chat-table th, .chat-table td { font-size: 11px; padding: 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; } /* Компактный стиль для вспомогательных таблиц */
+    .chat-feed { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; } /* Лента сообщений без маркеров для мессенджерного вида */
+    .chat-item { display: flex; gap: 12px; align-items: flex-start; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; padding: 12px; } /* Карточка сообщения */
+    .chat-avatar-col { width: 52px; display: flex; justify-content: center; } /* Узкая колонка под аватар */
+    .chat-bubble { flex: 1; display: flex; flex-direction: column; gap: 8px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 14px; padding: 10px 12px; } /* Пузырь сообщения */
+    .chat-bubble-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: #cbd5e1; } /* Заголовок пузыря */
+    .chat-bubble-meta { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: #e2e8f0; } /* Название чата */
+    .chat-bubble-author { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #e2e8f0; } /* Имя отправителя */
+    .chat-bubble-reply { border-left: 3px solid rgba(148, 163, 184, 0.4); padding-left: 10px; color: #cbd5e1; font-size: 12px; } /* Превью ответа */
+    .chat-bubble-attachments { display: flex; flex-wrap: wrap; gap: 6px; } /* Блок вложений */
+    .chat-bubble-text { font-size: 14px; line-height: 1.5; color: #e2e8f0; white-space: pre-wrap; } /* Текст сообщения */
+    .chat-bubble-footer { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: #cbd5e1; } /* Подвал карточки */
     .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
     .service-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 12px; font-size: 12px; } /* Пилюля статуса */
     .service-pill.info { background: rgba(56, 189, 248, 0.2); color: #bae6fd; border: 1px solid rgba(56, 189, 248, 0.5); } /* Цвет инфо */
@@ -62,7 +63,8 @@
     .gallery-nav-btn { min-width: 42px; } /* Минимальная ширина кнопок навигации */
     .gallery-thumb { margin: 2px; } /* Отступы кнопок миниатюр */
     .gallery-thumb.active { border-width: 2px !important; } /* Подсветка активного элемента */
-    .message-deleted > td { background: rgba(248, 113, 113, 0.12) !important; color: #fecdd3; } /* Красноватый фон для удаленных сообщений */
+    .message-deleted { border-color: rgba(248, 113, 113, 0.35) !important; } /* Обводка карточки удаленного сообщения */
+    .message-deleted .chat-bubble { background: rgba(127, 29, 29, 0.3); border-color: rgba(248, 113, 113, 0.5); color: #fecdd3; } /* Красноватый фон и текст пузыря удаленного сообщения */
     .message-deleted a { color: #fecdd3; } /* Красноватый цвет ссылок в удаленных сообщениях */
   </style> <!-- Конец стилей -->
 </head> <!-- Конец шапки -->
@@ -121,29 +123,9 @@
             <span class="badge bg-secondary">READ ONLY</span> <!-- Бейдж режима -->
           </div> <!-- Конец контейнера бейджей -->
         </div> <!-- Конец заголовка таблицы -->
-        <div class="table-responsive"> <!-- Обертка таблицы -->
-          <table class="table table-striped align-middle mb-0 chat-table"> <!-- Таблица логов с уменьшенным шрифтом -->
-            <thead class="text-secondary"> <!-- Шапка -->
-              <tr> <!-- Строка заголовков -->
-                <th class="col-time text-nowrap">Время</th> <!-- Колонка времени без переноса -->
-                <th class="col-chat text-nowrap">Чат</th> <!-- Колонка чата без переноса -->
-                <th class="col-author text-nowrap">Отправитель</th> <!-- Колонка автора без переноса -->
-                <th class="col-flag text-nowrap">Бот?</th> <!-- Колонка бота без переноса -->
-                <th class="col-reply">Ответ</th> <!-- Колонка ответа -->
-                <th class="col-attachments">Вложения</th> <!-- Колонка вложений -->
-                <th class="col-text">Текст</th> <!-- Колонка текста -->
-                <th class="col-id">ID VK</th> <!-- Колонка ID сообщения во VK -->
-                <th class="col-log-id">Запись</th> <!-- Колонка ID в базе -->
-                <th class="col-actions">Действия</th> <!-- Колонка действий -->
-              </tr> <!-- Конец строки заголовков -->
-            </thead> <!-- Конец шапки -->
-            <tbody id="logs-body"> <!-- Тело таблицы -->
-              <tr> <!-- Плейсхолдер -->
-                <td colspan="10" class="text-secondary">Нет данных</td> <!-- Текст плейсхолдера -->
-              </tr> <!-- Конец плейсхолдера -->
-            </tbody> <!-- Конец тела таблицы -->
-          </table> <!-- Конец таблицы -->
-        </div> <!-- Конец обертки таблицы -->
+        <div id="logs-body" class="chat-feed"> <!-- Лента логов в виде чата -->
+          <div class="text-secondary" id="logs-placeholder">Нет данных</div> <!-- Плейсхолдер при пустой ленте -->
+        </div> <!-- Конец ленты логов -->
       </div> <!-- Конец блока таблицы -->
     </div> <!-- Конец секции логов сообщений -->
 
@@ -222,7 +204,7 @@
     const initialPageSize = {{ initial_page_size|tojson }}; // Размер страницы подгрузки
     const initialServiceLogs = {{ initial_service_logs|tojson }}; // Стартовые сервисные логи
 
-    const logsBody = document.getElementById('logs-body'); // Тело таблицы логов
+    const logsBody = document.getElementById('logs-body'); // Лента логов в формате чата
     const peerFilter = document.getElementById('peer-filter'); // Селектор чатов
     const refreshBtn = document.getElementById('refresh-btn'); // Кнопка обновления
     const clearBtn = document.getElementById('clear-btn'); // Кнопка очистки логов сообщений
@@ -324,15 +306,15 @@
       } // Конец проверки наличия функции
     } // Конец функции очистки галереи
 
-    function renderLogs(logs, { append = false } = {}) { // Функция отрисовки таблицы логов с дописыванием
+    function renderLogs(logs, { append = false } = {}) { // Функция отрисовки ленты логов с дописыванием
       if (!append) { // Если перерисовываем полностью
-        logsBody.innerHTML = ''; // Очищаем тело таблицы
+        logsBody.innerHTML = ''; // Очищаем ленту
         resetGalleryStore(); // Сбрасываем галерею
         galleryCounter = 0; // Сбрасываем счетчик ключей галереи
       } // Конец проверки режима отрисовки
       if (!Array.isArray(logs) || logs.length === 0) { // Проверяем наличие данных
         if (!append) { // Если данных нет и это полная перерисовка
-          logsBody.innerHTML = '<tr id="logs-placeholder"><td colspan="10" class="text-secondary">Нет данных</td></tr>'; // Плейсхолдер
+          logsBody.innerHTML = '<div class="text-secondary" id="logs-placeholder">Нет данных</div>'; // Плейсхолдер
         } // Конец проверки режима
         return; // Прерываем выполнение при отсутствии данных
       } // Конец проверки массива данных
@@ -344,8 +326,8 @@
       } // Конец проверки режима добавления
       logs.forEach((log) => { // Перебираем логи
         const galleryKey = `log-${log.id ?? 'local'}-${galleryCounter++}`; // Формируем ключ галереи для записи
-        const row = chatApi.buildLogsRow(log, galleryApi, galleryKey, { formatDate: formatDateTime }); // Собираем строку через единый модуль истории чата
-        logsBody.appendChild(row); // Добавляем строку в таблицу
+        const row = chatApi.buildLogsRow(log, galleryApi, galleryKey, { formatDate: formatDateTime }); // Собираем карточку через единый модуль истории чата
+        logsBody.appendChild(row); // Добавляем карточку в ленту
       }); // Конец цикла
     } // Конец функции отрисовки
 
