@@ -1,6 +1,6 @@
 // Модуль унифицированной истории чата для всех страниц приложения
 (function (global) { // Оборачиваем код в самовызывающуюся функцию, чтобы не засорять глобальную область
-  const placeholder = '<span class="text-secondary">—</span>'; // Плейсхолдер для пустых значений
+  const placeholder = '<span class="text-secondary">—</span>'; // Плейсхолдер для пустых значений в ячейках
 
   function buildAvatarLabel(label, avatarUrl) { // Строим подпись с аватаркой или только текстом
     const safeLabel = label || '—'; // Фолбэк на случай отсутствия подписи
@@ -9,6 +9,15 @@
     } // Конец проверки аватара
     return safeLabel; // Возвращаем только текст, если аватара нет
   } // Конец функции сборки подписи с аватаром
+
+  function buildAvatarBubble(label, avatarUrl) { // Строим компактный аватар без дублирования подписи в карточке
+    const safeLabel = label || '—'; // Берём подпись или плейсхолдер
+    const initial = safeLabel.trim().charAt(0).toUpperCase() || '—'; // Вычисляем первую букву для плейсхолдера
+    if (avatarUrl) { // Если есть ссылка на аватар
+      return `<div class="avatar-shell"><img src="${avatarUrl}" alt="Аватар" class="avatar-inline" loading="lazy" /></div>`; // Показываем только картинку без лишнего текста
+    } // Конец проверки наличия ссылки
+    return `<div class="avatar-shell avatar-shell-placeholder" title="${safeLabel}">${initial}</div>`; // Рисуем кружок с первой буквой и подсказкой вместо дублирования имени
+  } // Конец функции построения аватара для карточки
 
   function buildPeerCell(message, options = {}) { // Строим ячейку чата с учетом настроек
     const chatName = message.peer_title || 'Чат без названия'; // Определяем название чата
@@ -70,72 +79,117 @@
     if (galleryApi?.registerMessageGallery) { // Проверяем наличие функции регистрации галереи
       galleryApi.registerMessageGallery({ ...message, attachments: normalizedAttachments, copy_history: normalizedCopyHistory }, galleryKey); // Регистрируем вложения в общем модуле галереи
     } // Конец проверки регистрации
-    const contentCell = galleryApi?.buildContentCell ? galleryApi.buildContentCell(normalizedAttachments, normalizedCopyHistory, galleryKey) : placeholder; // Формируем HTML ячейки контента
+    const contentCell = galleryApi?.buildContentCell ? galleryApi.buildContentCell(normalizedAttachments, normalizedCopyHistory, galleryKey) : ''; // Формируем HTML ячейки контента
     return { contentCell, normalizedAttachments, normalizedCopyHistory }; // Возвращаем собранные данные для дальнейшего использования
   } // Конец функции подготовки вложений
 
-  function buildDashboardRow(message, galleryApi, galleryKey, options = {}) { // Строим строку таблицы дашборда
-    const row = document.createElement('tr'); // Создаем элемент строки
-    if (options.isNew) { // Если строка новая
-      row.classList.add('message-row-new'); // Добавляем класс анимации появления
-    } // Конец проверки новизны строки
-    if (message.is_deleted) { // Если сообщение помечено как удаленное
-      row.classList.add('message-deleted'); // Подсвечиваем строку красноватым фоном
+  function buildDashboardRow(message, galleryApi, galleryKey, options = {}) { // Строим карточку сообщения для дашборда
+    const card = document.createElement('div'); // Создаем контейнер карточки
+    card.classList.add('chat-item'); // Добавляем базовый класс карточки
+    if (options.isNew) { // Если карточка новая
+      card.classList.add('message-row-new'); // Добавляем класс анимации появления
+    } // Конец проверки новизны карточки
+    if (message.is_deleted) { // Если сообщение удалено
+      card.classList.add('message-deleted'); // Подсвечиваем карточку удаленного сообщения
     } // Конец проверки удаления
-    const peerCell = buildPeerCell(message, { allowLink: true }); // Строим ячейку чата с ссылкой
-    const authorCell = buildSenderCell(message, { allowLink: true, showBotBadge: true }); // Строим ячейку отправителя с плашкой бота
-    const replyCell = buildReplyPreview(message.reply, { mode: 'compact' }); // Строим компактное превью ответа
-    const { contentCell } = prepareGalleryContent(message, galleryApi, galleryKey); // Готовим вложения и галерею
-    const textCell = message.text ?? ''; // Берем текст сообщения или пустую строку
-    row.innerHTML = `<td>${peerCell}</td><td>${authorCell}</td><td>${replyCell}</td><td>${contentCell}</td><td>${textCell}</td>`; // Заполняем HTML строки
-    return row; // Возвращаем готовую строку
-  } // Конец функции построения строки дашборда
+    const formatDate = options.formatDate || ((value) => value || '—'); // Берем функцию форматирования времени или плейсхолдер
+    const createdAt = formatDate(message.created_at); // Форматируем время создания записи
+    const peerCell = buildPeerCell(message, { allowLink: true }); // Строим подпись чата с возможной ссылкой
+    const authorCell = buildSenderCell(message, { allowLink: true, showBotBadge: true }); // Строим подпись отправителя с бейджем бота
+    const replyCell = buildReplyPreview(message.reply, { mode: 'compact' }); // Готовим компактное превью ответа
+    const hasReply = Boolean(message.reply && (message.reply.text || message.reply.from_name || message.reply.from_id)); // Проверяем, есть ли содержательный ответ
+    const { contentCell, normalizedAttachments, normalizedCopyHistory } = prepareGalleryContent(message, galleryApi, galleryKey); // Нормализуем вложения и регистрируем их в галерее
+    const hasAttachments = (normalizedAttachments?.length || 0) > 0 || (normalizedCopyHistory?.length || 0) > 0; // Проверяем наличие вложений или репостов
+    const textCell = message.text ?? ''; // Берем текст сообщения или оставляем пустую строку
+    card.innerHTML = `
+      <div class="chat-avatar-col">${buildAvatarBubble(message.from_name || message.peer_title, message.from_avatar || message.peer_avatar)}</div>
+      <div class="chat-bubble">
+        <div class="chat-bubble-header">
+          <div class="chat-bubble-meta">${peerCell}</div>
+          <div class="chat-bubble-time text-secondary">${createdAt}</div>
+        </div>
+        <div class="chat-bubble-author">${authorCell}</div>
+        ${hasReply ? `<div class="chat-bubble-reply">${replyCell}</div>` : ''}
+        ${hasAttachments ? `<div class="chat-bubble-attachments">${contentCell}</div>` : ''}
+        <div class="chat-bubble-text">${textCell || placeholder}</div>
+      </div>
+    `; // Заполняем HTML карточки с метаданными, ответом, вложениями и текстом в стиле мессенджера
+    return card; // Возвращаем готовую карточку
+  } // Конец функции построения карточки дашборда
 
-  function buildLogsRow(log, galleryApi, galleryKey, options = {}) { // Строим строку таблицы логов
-    const row = document.createElement('tr'); // Создаем элемент строки
-    if (log.is_deleted) { // Если лог отмечен как удаленный
-      row.classList.add('message-deleted'); // Добавляем класс подсветки удаления
+  function buildLogsRow(log, galleryApi, galleryKey, options = {}) { // Строим карточку логов в стиле переписки
+    const card = document.createElement('div'); // Создаем контейнер карточки
+    card.classList.add('chat-item'); // Добавляем базовый класс карточки
+    if (log.is_deleted) { // Если запись удалена
+      card.classList.add('message-deleted'); // Подсвечиваем карточку как удаленную
     } // Конец проверки удаления
     const formatDate = options.formatDate || ((value) => value || '—'); // Берем функцию форматирования времени
     const createdAt = formatDate(log.created_at); // Форматируем время создания
-    const peerCell = buildPeerCell(log, { allowLink: true }); // Строим ячейку чата
-    const authorCell = buildSenderCell(log, { allowLink: true, showBotBadge: true }); // Строим ячейку отправителя
-    const botBadge = log.is_bot ? 'Да' : 'Нет'; // Определяем флаг бота
-    const replyCell = buildReplyPreview(log.reply, { mode: 'detailed', peerId: log.peer_id }); // Строим детальное превью ответа
-    const { contentCell } = prepareGalleryContent(log, galleryApi, galleryKey); // Готовим вложения
-    const textCell = log.text ?? ''; // Берем текст или пустую строку
-    const messageIdCell = log.message_id ?? '—'; // Берем ID сообщения
-    const logIdCell = log.id ?? '—'; // Берем ID записи лога
+    const peerCell = buildPeerCell(log, { allowLink: true }); // Готовим подпись чата
+    const authorCell = buildSenderCell(log, { allowLink: true, showBotBadge: true }); // Готовим подпись отправителя
+    const botBadge = log.is_bot ? 'Да' : 'Нет'; // Определяем флаг бота текстом
+    const replyCell = buildReplyPreview(log.reply, { mode: 'detailed', peerId: log.peer_id }); // Собираем детальное превью ответа
+    const hasReply = Boolean(log.reply && (log.reply.text || log.reply.from_name || log.reply.from_id)); // Проверяем, есть ли содержательный ответ
+    const { contentCell, normalizedAttachments, normalizedCopyHistory } = prepareGalleryContent(log, galleryApi, galleryKey); // Подготавливаем вложения
+    const hasAttachments = (normalizedAttachments?.length || 0) > 0 || (normalizedCopyHistory?.length || 0) > 0; // Проверяем наличие вложений
+    const textCell = log.text ?? ''; // Берем текст сообщения
+    const messageIdCell = log.message_id ?? '—'; // Берем ID сообщения VK
+    const logIdCell = log.id ?? '—'; // Берем ID записи в базе
     const deleteButton = `<button type="button" class="btn btn-sm btn-outline-danger delete-log-btn" data-log-id="${log.id}">Удалить</button>`; // Формируем кнопку удаления
-    row.innerHTML = `<td>${createdAt}</td><td>${peerCell}</td><td>${authorCell}</td><td>${botBadge}</td><td>${replyCell}</td><td>${contentCell}</td><td>${textCell}</td><td>${messageIdCell}</td><td>${logIdCell}</td><td>${deleteButton}</td>`; // Заполняем HTML строки таблицы логов
-    return row; // Возвращаем готовую строку
-  } // Конец функции построения строки логов
+    card.innerHTML = `
+      <div class="chat-avatar-col">${buildAvatarBubble(log.from_name || log.peer_title, log.from_avatar || log.peer_avatar)}</div>
+      <div class="chat-bubble"> 
+        <div class="chat-bubble-header">
+          <div class="chat-bubble-meta">${peerCell}</div>
+          <div class="chat-bubble-time text-secondary">${createdAt}</div>
+        </div>
+        <div class="chat-bubble-author">${authorCell}</div>
+        <div class="chat-bubble-flags">Бот: ${botBadge}</div>
+        ${hasReply ? `<div class="chat-bubble-reply">${replyCell}</div>` : ''}
+        ${hasAttachments ? `<div class="chat-bubble-attachments">${contentCell}</div>` : ''}
+        <div class="chat-bubble-text">${textCell || placeholder}</div>
+        <div class="chat-bubble-footer">
+          <span class="badge bg-dark">VK ID: ${messageIdCell}</span>
+          <span class="badge bg-secondary">Запись: ${logIdCell}</span> 
+          ${deleteButton} 
+        </div> 
+      </div>
+    `; // Заполняем карточку всеми метаданными, текстом и кнопкой удаления
+    return card; // Возвращаем готовую карточку
+  } // Конец функции построения карточки логов
 
-  function buildEntityRow(message, galleryApi, galleryKey, options = {}) { // Строим строку для страниц профилей чатов и пользователей
-    const row = document.createElement('tr'); // Создаем строку таблицы
-    if (message.is_deleted) { // Если сообщение помечено как удаленное
-      row.classList.add('message-deleted'); // Подсвечиваем строку в таблице профиля
+  function buildEntityRow(message, galleryApi, galleryKey, options = {}) { // Строим карточку для профилей чатов и пользователей
+    const card = document.createElement('div'); // Создаем контейнер карточки
+    card.classList.add('chat-item'); // Добавляем базовый класс карточки
+    if (message.is_deleted) { // Если сообщение удалено
+      card.classList.add('message-deleted'); // Подсвечиваем удаленные сообщения
     } // Конец проверки удаления
     const formatDate = options.formatDate || ((value) => value || '—'); // Берем функцию форматирования времени
-    const showChatColumn = Boolean(options.showChatColumn); // Определяем, нужно ли показывать столбец чата
-    const showSenderColumn = Boolean(options.showSenderColumn); // Определяем, нужно ли показывать столбец отправителя
-    const createdAtCell = formatDate(message.created_at); // Форматируем время создания сообщения
-    const peerCell = buildPeerCell(message, { allowLink: true }); // Собираем ячейку чата
-    const authorCell = buildSenderCell(message, { allowLink: true, showBotBadge: true }); // Собираем ячейку отправителя
-    const { contentCell } = prepareGalleryContent(message, galleryApi, galleryKey); // Подготавливаем вложения и создаем ячейку с бейджами
+    const showChatColumn = Boolean(options.showChatColumn); // Определяем, нужно ли показывать название чата
+    const showSenderColumn = Boolean(options.showSenderColumn); // Определяем, нужно ли показывать автора
+    const createdAtCell = formatDate(message.created_at); // Форматируем дату создания
+    const peerCell = buildPeerCell(message, { allowLink: true }); // Строим подпись чата
+    const authorCell = buildSenderCell(message, { allowLink: true, showBotBadge: true }); // Строим подпись отправителя
+    const { contentCell, normalizedAttachments, normalizedCopyHistory } = prepareGalleryContent(message, galleryApi, galleryKey); // Подготавливаем вложения и галерею
+    const hasAttachments = (normalizedAttachments?.length || 0) > 0 || (normalizedCopyHistory?.length || 0) > 0; // Проверяем наличие вложений или репостов
     const textCell = message.text ?? '—'; // Берем текст сообщения или плейсхолдер
-    const cells = [`<td>${createdAtCell}</td>`]; // Начинаем набор ячеек с времени
-    if (showChatColumn) { // Если нужно показывать столбец чата
-      cells.push(`<td>${peerCell}</td>`); // Добавляем ячейку чата
-    } // Конец проверки столбца чата
-    if (showSenderColumn) { // Если нужно показывать столбец отправителя
-      cells.push(`<td>${authorCell}</td>`); // Добавляем ячейку отправителя
-    } // Конец проверки столбца отправителя
-    cells.push(`<td>${contentCell}</td>`); // Добавляем ячейку с вложениями
-    cells.push(`<td>${textCell}</td>`); // Добавляем ячейку с текстом
-    row.innerHTML = cells.join(''); // Склеиваем все ячейки в строку
-    return row; // Возвращаем готовую строку
-  } // Конец функции построения строки профиля
+    const metaChunks = [`<span class="chat-bubble-time text-secondary">${createdAtCell}</span>`]; // Создаем массив метаданных, начиная со времени
+    if (showChatColumn) { // Если нужно показать чат
+      metaChunks.push(`<span class="chat-bubble-meta">${peerCell}</span>`); // Добавляем название чата
+    } // Конец проверки чата
+    if (showSenderColumn) { // Если нужно показать автора
+      metaChunks.push(`<span class="chat-bubble-author">${authorCell}</span>`); // Добавляем подпись отправителя
+    } // Конец проверки автора
+    card.innerHTML = `
+      <div class="chat-avatar-col">${buildAvatarBubble(message.from_name || message.peer_title, message.from_avatar || message.peer_avatar)}</div>
+      <div class="chat-bubble">
+        <div class="chat-bubble-header">${metaChunks.join(' · ')}</div>
+        ${hasAttachments ? `<div class="chat-bubble-attachments">${contentCell}</div>` : ''}
+        <div class="chat-bubble-text">${textCell}</div>
+      </div>
+    `; // Собираем карточку профиля с метаданными, вложениями и текстом
+    return card; // Возвращаем готовую карточку
+  } // Конец функции построения карточки профиля
 
   function registerEntityGalleries(messages, galleryApi) { // Регистрируем галереи на страницах профиля чата/пользователя
     if (!Array.isArray(messages)) { // Проверяем, что данные корректные
@@ -149,6 +203,7 @@
 
   global.chatHistory = { // Экспортируем публичное API
     buildAvatarLabel, // Выносим сборку подписи с аватаром
+    buildAvatarBubble, // Выносим сборку аватарки без текста для карточек
     buildPeerCell, // Выносим сборку ячейки чата
     buildSenderCell, // Выносим сборку ячейки отправителя
     buildReplyPreview, // Выносим превью ответа
