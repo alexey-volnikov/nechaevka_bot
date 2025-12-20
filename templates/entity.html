@@ -29,6 +29,7 @@
     .attachment-generic { border-color: rgba(148, 163, 184, 0.5); color: #e2e8f0; } /* Цвет прочего */
     .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачные ячейки */
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатость */
+    .chat-table th, .chat-table td { font-size: 13px; } /* Уменьшаем шрифт таблицы истории для компактности строк */
     .text-secondary-small { color: #94a3b8; font-size: 13px; } /* Серый мелкий текст */
     .gallery-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 16px; } /* Затемненный фон галереи */
     .gallery-body { background: #0b1220; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; max-width: 900px; width: 100%; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); display: flex; flex-direction: column; gap: 12px; padding: 16px; } /* Контейнер галереи */
@@ -111,7 +112,7 @@
         {% set show_chat_column = entity_type != 'chat' %} <!-- Флаг отображения столбца чата (скрываем в профиле чата) -->
         {% set show_sender_column = entity_type == 'chat' %} <!-- Флаг отображения столбца отправителя (скрываем в профиле человека) -->
         {% set column_count = 3 + (1 if show_chat_column else 0) + (1 if show_sender_column else 0) %} <!-- Рассчитываем количество столбцов для корректного colspan -->
-        <table class="table table-striped align-middle mb-0"> <!-- Таблица -->
+        <table class="table table-striped align-middle mb-0 chat-table"> <!-- Таблица с уменьшенным шрифтом -->
           <thead class="text-secondary"> <!-- Заголовок таблицы -->
             <tr> <!-- Строка заголовков -->
               <th>Время</th> <!-- Колонка времени -->

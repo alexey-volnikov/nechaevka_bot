@@ -82,12 +82,14 @@
     if (message.is_deleted) { // Если сообщение помечено как удаленное
       row.classList.add('message-deleted'); // Подсвечиваем строку красноватым фоном
     } // Конец проверки удаления
+    const formatDate = options.formatDate || ((value) => value || '—'); // Берем функцию форматирования времени или плейсхолдер
+    const createdAt = formatDate(message.created_at); // Форматируем время создания записи
     const peerCell = buildPeerCell(message, { allowLink: true }); // Строим ячейку чата с ссылкой
     const authorCell = buildSenderCell(message, { allowLink: true, showBotBadge: true }); // Строим ячейку отправителя с плашкой бота
     const replyCell = buildReplyPreview(message.reply, { mode: 'compact' }); // Строим компактное превью ответа
     const { contentCell } = prepareGalleryContent(message, galleryApi, galleryKey); // Готовим вложения и галерею
     const textCell = message.text ?? ''; // Берем текст сообщения или пустую строку
-    row.innerHTML = `<td>${peerCell}</td><td>${authorCell}</td><td>${replyCell}</td><td>${contentCell}</td><td>${textCell}</td>`; // Заполняем HTML строки
+    row.innerHTML = `<td class="text-secondary small">${createdAt}</td><td>${peerCell}</td><td>${authorCell}</td><td>${replyCell}</td><td>${contentCell}</td><td>${textCell}</td>`; // Заполняем HTML строки с дополнительной колонкой времени
     return row; // Возвращаем готовую строку
   } // Конец функции построения строки дашборда
 

@@ -18,6 +18,7 @@
     .card-title { font-weight: 700; letter-spacing: 0.02em; } /* Заголовок карточек */
     .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачный фон таблицы */
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатая таблица */
+    .chat-table th, .chat-table td { font-size: 13px; } /* Уменьшаем шрифт таблиц чатов, чтобы названия и время помещались в строку */
     .pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.4); color: #cbd5e1; font-size: 13px; } /* Пилюли статуса */
     .stat-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; } /* Точка индикатора */
     .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
@@ -191,7 +192,7 @@
             <span class="badge bg-secondary">Read-only</span> <!-- Бейдж -->
           </div> <!-- Конец заголовка -->
           <div class="table-responsive"> <!-- Обертка таблицы -->
-            <table class="table table-striped align-middle mb-0"> <!-- Таблица диалогов -->
+            <table class="table table-striped align-middle mb-0 chat-table"> <!-- Таблица диалогов с уменьшенным шрифтом -->
               <thead class="text-secondary"> <!-- Заголовок -->
                 <tr> <!-- Строка заголовка таблицы -->
                   <th>peer_id</th> <!-- Заголовок идентификатора чата -->
@@ -228,9 +229,10 @@
             </div> <!-- Конец контейнера кнопок -->
           </div> <!-- Конец заголовка -->
           <div class="table-responsive"> <!-- Обертка таблицы -->
-            <table class="table table-sm table-striped align-middle mb-0"> <!-- Таблица сообщений -->
+            <table class="table table-sm table-striped align-middle mb-0 chat-table"> <!-- Таблица сообщений с уменьшенным шрифтом -->
               <thead class="text-secondary"> <!-- Заголовок таблицы -->
                 <tr> <!-- Строка заголовка -->
+                  <th>Время</th> <!-- Заголовок столбца времени -->
                   <th>Чат</th> <!-- Заголовок столбца -->
                   <th>Отправитель</th> <!-- Заголовок столбца с автором и пометкой бота -->
                   <th>Ответ</th> <!-- Заголовок столбца -->
@@ -240,7 +242,7 @@
               </thead> <!-- Конец заголовка таблицы -->
               <tbody id="messages-body"> <!-- Тело таблицы -->
                 <tr> <!-- Строка-заглушка -->
-                  <td colspan="5" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
+                  <td colspan="6" class="text-secondary">Нет данных</td> <!-- Плейсхолдер -->
                 </tr> <!-- Конец строки-заглушки -->
               </tbody> <!-- Конец тела таблицы -->
             </table> <!-- Конец таблицы -->
@@ -376,7 +378,7 @@
       } // Конец проверки наличия
       const row = document.createElement('tr'); // Создаем строку для плейсхолдера
       row.id = 'messages-placeholder'; // Добавляем идентификатор
-      row.innerHTML = '<td colspan="5" class="text-secondary">Нет данных</td>'; // Заполняем текст плейсхолдера
+      row.innerHTML = '<td colspan="6" class="text-secondary">Нет данных</td>'; // Заполняем текст плейсхолдера с учетом новой колонки времени
       messagesBody.appendChild(row); // Добавляем строку в таблицу
     }; // Конец функции плейсхолдера
 
@@ -409,7 +411,7 @@
         } // Конец проверки дубля
         renderedMessageKeys.add(messageKey); // Сохраняем ключ как отрисованный
         const galleryKey = `msg-${msg.id ?? 'local'}-${messageGalleryCounter++}`; // Генерируем ключ для галереи
-        const row = chatApi.buildDashboardRow(msg, galleryApi, galleryKey, { isNew: mode === 'prepend' }); // Собираем строку через модуль истории
+        const row = chatApi.buildDashboardRow(msg, galleryApi, galleryKey, { isNew: mode === 'prepend', formatDate: formatDateTime }); // Собираем строку через модуль истории и передаем форматирование времени
         fragment.appendChild(row); // Добавляем строку в фрагмент
       }); // Конец перебора порции
       if (mode === 'prepend') { // Если нужно добавить новые строки сверху
