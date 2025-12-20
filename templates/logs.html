@@ -238,8 +238,8 @@
     let serviceTotal = 0; // Общее количество сервисных событий
     const serviceHashRequested = window.location.hash.includes('service-alerts'); // Флаг наличия якоря сервисных логов в URL
     if (serviceHashRequested) { // Если в адресе сразу указаны сервисные логи
-      serviceTypeSelect.value = 'important'; // Ставим фильтр «Важные» до загрузки данных
-    } // Конец предварительной установки фильтра
+        serviceTypeSelect.value = 'important'; // Ставим фильтр «Важные» до загрузки данных
+      } // Конец предварительной установки фильтра
 
     const timezoneInfo = Intl.DateTimeFormat().resolvedOptions(); // Читаем параметры локальной таймзоны
     const timezoneOffsetMinutes = new Date().getTimezoneOffset(); // Получаем смещение в минутах относительно UTC
@@ -285,7 +285,7 @@
         serviceTypeSelect.value = 'important'; // Ставим фильтр «Важные» по умолчанию
         serviceOffset = 0; // Сбрасываем смещение пагинации
         switchToService(); // Переключаемся на вкладку сервисных логов
-        refreshServiceLogs(); // Обновляем таблицу с новым фильтром
+        refreshServiceLogs({ markAsRead: true }); // Обновляем таблицу с новым фильтром и сбрасываем счетчик
       } else { // Если якоря нет или он другой
         switchToMessages(); // Возвращаемся на вкладку логов сообщений
       } // Конец проверки якоря
@@ -436,13 +436,16 @@
       } // Конец обработки
     } // Конец функции очистки логов сообщений
 
-    async function refreshServiceLogs() { // Функция обновления сервисных логов
+    async function refreshServiceLogs({ markAsRead = false } = {}) { // Функция обновления сервисных логов
       try { // Блок попытки
         const params = {}; // Готовим параметры
         const limit = Number(serviceLimitInput.value) || 50; // Читаем лимит
         if (serviceTypeSelect.value) { // Если выбран тип
           params.event_type = serviceTypeSelect.value; // Добавляем тип
         } // Конец условия
+        if (markAsRead) { // Если нужно отметить важные события как прочитанные
+          params.mark_read = '1'; // Передаем флаг сброса счётчика
+        } // Конец проверки сброса
         params.limit = limit; // Добавляем лимит
         params.offset = serviceOffset; // Добавляем смещение
         const result = await fetchServiceLogs(params); // Получаем данные
@@ -508,7 +511,7 @@
 
     serviceRefreshBtn.addEventListener('click', (event) => { // Обработчик обновления сервисных логов
       event.preventDefault(); // Отменяем действие кнопки
-      refreshServiceLogs(); // Перезапрашиваем сервисные логи
+      refreshServiceLogs({ markAsRead: true }); // Перезапрашиваем сервисные логи с пометкой прочитанных
     }); // Конец обработчика обновления
 
     serviceClearBtn.addEventListener('click', (event) => { // Обработчик кнопки очистки
@@ -518,24 +521,24 @@
 
     serviceTypeSelect.addEventListener('change', () => { // Обработчик смены типа
       serviceOffset = 0; // Сбрасываем смещение
-      refreshServiceLogs(); // Перерисовываем данные
+      refreshServiceLogs({ markAsRead: true }); // Перерисовываем данные и сбрасываем счетчик важных
     }); // Конец обработчика смены типа
 
     serviceLimitInput.addEventListener('change', () => { // Обработчик смены лимита
       serviceOffset = 0; // Сбрасываем смещение
-      refreshServiceLogs(); // Обновляем таблицу
+      refreshServiceLogs({ markAsRead: true }); // Обновляем таблицу и отмечаем прочитанное
     }); // Конец обработчика смены лимита
 
     servicePrevBtn.addEventListener('click', () => { // Обработчик кнопки назад
       const limit = Number(serviceLimitInput.value) || 50; // Читаем лимит
       serviceOffset = Math.max(0, serviceOffset - limit); // Уменьшаем смещение
-      refreshServiceLogs(); // Обновляем таблицу
+      refreshServiceLogs({ markAsRead: true }); // Обновляем таблицу и сбрасываем непрочитанные
     }); // Конец обработчика кнопки назад
 
     serviceNextBtn.addEventListener('click', () => { // Обработчик кнопки вперед
       const limit = Number(serviceLimitInput.value) || 50; // Читаем лимит
       serviceOffset += limit; // Увеличиваем смещение
-      refreshServiceLogs(); // Обновляем таблицу
+      refreshServiceLogs({ markAsRead: true }); // Обновляем таблицу и сбрасываем непрочитанные
     }); // Конец обработчика кнопки вперед
 
     messagesTabBtn.addEventListener('click', () => { // Обработчик переключения на вкладку сообщений
@@ -544,7 +547,7 @@
 
     serviceTabBtn.addEventListener('click', () => { // Обработчик переключения на вкладку сервисных логов
       switchToService(); // Показываем секцию сервисных логов
-      refreshServiceLogs(); // Перезапрашиваем сервисные логи при показе
+      refreshServiceLogs({ markAsRead: true }); // Перезапрашиваем сервисные логи при показе и помечаем прочитанные
     }); // Конец обработчика вкладки сервисных логов
 
     window.addEventListener('hashchange', () => { // Подписываемся на изменения якоря в адресе

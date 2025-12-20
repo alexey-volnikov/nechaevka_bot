@@ -586,6 +586,19 @@ class ServiceEventLogger:  # Логгер сервисных событий с �
             )
             self._connection.commit()  # Сохраняем изменения схемы
 
+            cursor.execute(  # Создаем таблицу для служебных метаданных, если её ещё нет
+                """
+                CREATE TABLE IF NOT EXISTS service_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                )
+                """
+            )
+            cursor.execute(  # Готовим дефолтную запись с последним просмотренным важным событием
+                "INSERT OR IGNORE INTO service_meta (key, value) VALUES ('last_seen_important_id', '0')"
+            )
+            self._connection.commit()  # Сохраняем изменения для метаданных
+
     def _classify_event(self, status_code: int) -> str:
         if status_code >= 500:  # Ошибка сервера
             return "error"  # Возвращаем тип ошибки
@@ -637,11 +650,60 @@ class ServiceEventLogger:  # Логгер сервисных событий с �
             result = cursor.fetchone()  # Получаем строку с количеством
             return int(result[0]) if result else 0  # Возвращаем число
 
+    def count_unread_important(self) -> int:
+        with self._lock:  # Начинаем защищенный доступ
+            cursor = self._connection.cursor()  # Берем курсор
+            cursor.execute(  # Читаем последний просмотренный ID важных событий
+                "SELECT value FROM service_meta WHERE key = 'last_seen_important_id'"
+            )
+            row = cursor.fetchone()  # Получаем строку результата
+            last_seen_raw = row[0] if row else "0"  # Извлекаем сохраненное значение
+            try:
+                last_seen = int(last_seen_raw)  # Пробуем привести к числу
+            except (TypeError, ValueError):
+                last_seen = 0  # При неудаче используем ноль
+            cursor.execute(  # Считаем количество предупреждений и ошибок после последнего просмотра
+                """
+                SELECT COUNT(*) FROM service_events
+                WHERE event_type IN ('warning', 'error') AND id > ?
+                """,
+                (last_seen,),
+            )
+            result = cursor.fetchone()  # Получаем строку результата
+            return int(result[0]) if result else 0  # Возвращаем количество непрочитанных важных событий
+
+    def mark_important_read(self) -> int:
+        with self._lock:  # Начинаем защищенный доступ
+            cursor = self._connection.cursor()  # Берем курсор
+            cursor.execute(  # Ищем максимальный ID среди важных событий
+                "SELECT COALESCE(MAX(id), 0) FROM service_events WHERE event_type IN ('warning', 'error')"
+            )
+            max_id_row = cursor.fetchone()  # Получаем строку результата
+            max_id = int(max_id_row[0]) if max_id_row else 0  # Безопасно приводим к числу
+            cursor.execute(  # Обновляем сохраненный последний просмотренный ID
+                """
+                INSERT INTO service_meta (key, value)
+                VALUES ('last_seen_important_id', ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (str(max_id),),
+            )
+            self._connection.commit()  # Фиксируем изменения
+            return max_id  # Возвращаем установленный ID для возможного дальнейшего использования
+
     def clear_events(self) -> None:
         with self._lock:  # Начинаем защищенную операцию
             cursor = self._connection.cursor()  # Берем курсор
             cursor.execute("DELETE FROM service_events")  # Удаляем все строки
             self._connection.commit()  # Сохраняем изменения
+            cursor.execute(  # Сбрасываем отметку прочитанного при полной очистке
+                """
+                INSERT INTO service_meta (key, value)
+                VALUES ('last_seen_important_id', '0')
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """
+            )
+            self._connection.commit()  # Фиксируем сброс метаданных
         self._vacuum()  # Запускаем VACUUM вне блокировки, чтобы уменьшить файл базы после очистки
 
     def _vacuum(self) -> None:
@@ -1928,15 +1990,28 @@ def build_dashboard_app(
         event_type = request.args.get("event_type")  # Читаем тип события из запроса
         limit_raw = request.args.get("limit")  # Читаем желаемый лимит
         offset_raw = request.args.get("offset")  # Читаем смещение для пагинации
+        mark_read_raw = request.args.get("mark_read")  # Читаем флаг сброса непрочитанного
         limit = int(limit_raw) if limit_raw else 50  # Преобразуем лимит в число
         limit = max(1, min(limit, 200))  # Ограничиваем лимит разумными рамками
         offset = int(offset_raw) if offset_raw else 0  # Преобразуем смещение
         offset = max(0, offset)  # Не даем отрицательных смещений
         rows = service_events.fetch_events(event_type=event_type, limit=limit, offset=offset)  # Получаем строки из базы
         total = service_events.count_events(event_type=event_type)  # Считаем общее количество
+        unread_important = service_events.count_unread_important()  # Считаем непрочитанные важные события
         payload = [serialize_service_event(row) for row in rows]  # Сериализуем события
+        if mark_read_raw and str(mark_read_raw).lower() in {"1", "true", "yes"}:  # Проверяем, нужно ли отметить важные как прочитанные
+            service_events.mark_important_read()  # Сбрасываем счётчик непрочитанных важных событий
+            unread_important = 0  # Обновляем локальный счётчик после сброса
         log_service_event(200, f"Отдаём сервисные логи type={event_type} лимит={limit} смещение={offset}")  # Фиксируем отдачу
-        return jsonify({"items": payload, "total": total, "limit": limit, "offset": offset})  # Возвращаем JSON ответ
+        return jsonify(  # Возвращаем JSON ответ
+            {
+                "items": payload,  # Список событий
+                "total": total,  # Общее количество по текущему фильтру
+                "limit": limit,  # Применённый лимит
+                "offset": offset,  # Смещение пагинации
+                "unread_total": unread_important,  # Количество непрочитанных важных событий
+            }
+        )
 
     @app.route("/api/service-logs/clear", methods=["POST"])
     def clear_service_logs():

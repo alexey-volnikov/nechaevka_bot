@@ -631,7 +631,7 @@
     } // Конец функции
 
     function updateImportantBadge(count) { // Функция обновления бейджа важных сообщений
-      const safeCount = Number(count) || 0; // Нормализуем значение
+      const safeCount = Number(count ?? 0) || 0; // Нормализуем значение с запасом
       importantBadge.textContent = safeCount; // Выводим число
       importantBadge.className = safeCount > 0 ? 'badge bg-danger fs-6' : 'badge bg-secondary fs-6'; // Меняем цвет по наличию событий
     } // Конец функции бейджа
@@ -658,7 +658,7 @@
         renderConversations(overview.conversations || []); // Обновляем диалоги
         renderPeers(overview.peers || []); // Обновляем список чатов
         renderStorage(overview.storage || initialStorage || {}); // Обновляем данные о файле базы
-        updateImportantBadge(alerts.total || 0); // Обновляем бейдж важных сообщений
+        updateImportantBadge(alerts.unread_total ?? alerts.total ?? 0); // Обновляем бейдж важных сообщений с учетом непрочитанного
         await fetchLatestMessages(); // Подтягиваем новые сообщения без сброса ленты
       } catch (err) { // В случае ошибки
         console.error('Ошибка обновления дашборда', err); // Пишем ошибку в консоль
