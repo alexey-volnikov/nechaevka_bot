@@ -29,9 +29,13 @@
     .attachment-generic { border-color: rgba(148, 163, 184, 0.5); color: #e2e8f0; } /* Цвет прочего */
     .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачные ячейки */
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатость */
-    .chat-table { table-layout: auto; width: 100%; } /* Автоматическое распределение ширины колонок без лишних пустот и растягивания */
-    .chat-table th, .chat-table td { font-size: 11px; padding: 2px 6px; white-space: nowrap; } /* Минимизируем шрифт, еще сильнее поджимаем отступы и запрещаем переносы, чтобы все строки оставались в одну линию */
-    .chat-table td { overflow: hidden; text-overflow: ellipsis; } /* Обрезаем длинные значения с многоточием вместо переноса строки */
+    .chat-table { table-layout: fixed; width: 100%; } /* Фиксированная сетка, чтобы ширина колонок не расползалась и строки оставались на месте */
+    .chat-table th, .chat-table td { font-size: 11px; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; } /* Минимальный шрифт, плотные отступы и обрезка длинных значений внутри фиксированной таблицы */
+    .col-time { width: 120px; } /* Узкая стабильная колонка времени */
+    .col-chat { width: 200px; } /* Колонка названия чата средней ширины */
+    .col-author { width: 200px; } /* Колонка отправителя средней ширины */
+    .col-attachments { width: 160px; } /* Колонка вложений под бейджи */
+    .col-text { width: 100%; } /* Основной текст занимает остаток строки и режется многоточием */
     .text-secondary-small { color: #94a3b8; font-size: 13px; } /* Серый мелкий текст */
     .gallery-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 16px; } /* Затемненный фон галереи */
     .gallery-body { background: #0b1220; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; max-width: 900px; width: 100%; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); display: flex; flex-direction: column; gap: 12px; padding: 16px; } /* Контейнер галереи */
@@ -117,15 +121,15 @@
         <table class="table table-striped align-middle mb-0 chat-table"> <!-- Таблица с уменьшенным шрифтом -->
           <thead class="text-secondary"> <!-- Заголовок таблицы -->
             <tr> <!-- Строка заголовков -->
-              <th class="text-nowrap">Время</th> <!-- Колонка времени без переноса -->
+              <th class="col-time text-nowrap">Время</th> <!-- Колонка времени без переноса -->
               {% if show_chat_column %} <!-- Если нужно показать столбец чата -->
-              <th class="text-nowrap">Чат</th> <!-- Колонка чата без переноса -->
+              <th class="col-chat text-nowrap">Чат</th> <!-- Колонка чата без переноса -->
               {% endif %} <!-- Конец проверки столбца чата -->
               {% if show_sender_column %} <!-- Если нужно показать столбец отправителя -->
-              <th class="text-nowrap">Отправитель</th> <!-- Колонка автора без переноса -->
+              <th class="col-author text-nowrap">Отправитель</th> <!-- Колонка автора без переноса -->
               {% endif %} <!-- Конец проверки столбца отправителя -->
-              <th>Вложения</th> <!-- Колонка вложений -->
-              <th>Текст</th> <!-- Колонка текста -->
+              <th class="col-attachments">Вложения</th> <!-- Колонка вложений -->
+              <th class="col-text">Текст</th> <!-- Колонка текста -->
             </tr> <!-- Конец строки заголовков -->
           </thead> <!-- Конец заголовка -->
           <tbody id="messages-body"> <!-- Тело таблицы с идентификатором для скрипта рендера -->

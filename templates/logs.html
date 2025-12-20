@@ -14,9 +14,18 @@
     .badge-soft { background: rgba(99, 102, 241, 0.15); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.35); } /* Мягкий бейдж */
     .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачные ячейки */
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатость */
-    .chat-table { table-layout: auto; width: 100%; } /* Автоматическое распределение ширины колонок без лишних пустот и растягивания */
-    .chat-table th, .chat-table td { font-size: 11px; padding: 2px 6px; white-space: nowrap; } /* Минимизируем шрифт, еще сильнее уменьшаем отступы и запрещаем переносы во всех ячейках */
-    .chat-table td { overflow: hidden; text-overflow: ellipsis; } /* Обрезаем длинные значения с многоточием, чтобы каждая строка оставалась в одну линию */
+    .chat-table { table-layout: fixed; width: 100%; } /* Фиксированная сетка, чтобы ширина колонок была предсказуемой и сообщения не уезжали за экран */
+    .chat-table th, .chat-table td { font-size: 11px; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; } /* Минимальный шрифт, узкие отступы и жесткое ограничение ширины ячеек с многоточием */
+    .col-time { width: 120px; } /* Узкая стабильная колонка времени */
+    .col-chat { width: 200px; } /* Средняя колонка для названия чата */
+    .col-author { width: 200px; } /* Средняя колонка для отправителя */
+    .col-flag { width: 90px; } /* Узкая колонка флага бота */
+    .col-reply { width: 240px; } /* Колонка ответа с запасом под текст */
+    .col-attachments { width: 160px; } /* Колонка вложений под бейджи */
+    .col-text { width: 100%; } /* Основной текст занимает остаток строки и обрезается многоточием */
+    .col-id { width: 110px; } /* Колонка идентификатора сообщения */
+    .col-log-id { width: 110px; } /* Колонка идентификатора записи лога */
+    .col-actions { width: 120px; } /* Колонка для кнопок действий */
     .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
     .service-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 12px; font-size: 12px; } /* Пилюля статуса */
     .service-pill.info { background: rgba(56, 189, 248, 0.2); color: #bae6fd; border: 1px solid rgba(56, 189, 248, 0.5); } /* Цвет инфо */
@@ -116,16 +125,16 @@
           <table class="table table-striped align-middle mb-0 chat-table"> <!-- Таблица логов с уменьшенным шрифтом -->
             <thead class="text-secondary"> <!-- Шапка -->
               <tr> <!-- Строка заголовков -->
-                <th class="text-nowrap">Время</th> <!-- Колонка времени без переноса -->
-                <th class="text-nowrap">Чат</th> <!-- Колонка чата без переноса -->
-                <th class="text-nowrap">Отправитель</th> <!-- Колонка автора без переноса -->
-                <th class="text-nowrap">Бот?</th> <!-- Колонка бота без переноса -->
-                <th>Ответ</th> <!-- Колонка ответа -->
-                <th>Вложения</th> <!-- Колонка вложений -->
-                <th>Текст</th> <!-- Колонка текста -->
-                <th>ID VK</th> <!-- Колонка ID сообщения во VK -->
-                <th>Запись</th> <!-- Колонка ID в базе -->
-                <th>Действия</th> <!-- Колонка действий -->
+                <th class="col-time text-nowrap">Время</th> <!-- Колонка времени без переноса -->
+                <th class="col-chat text-nowrap">Чат</th> <!-- Колонка чата без переноса -->
+                <th class="col-author text-nowrap">Отправитель</th> <!-- Колонка автора без переноса -->
+                <th class="col-flag text-nowrap">Бот?</th> <!-- Колонка бота без переноса -->
+                <th class="col-reply">Ответ</th> <!-- Колонка ответа -->
+                <th class="col-attachments">Вложения</th> <!-- Колонка вложений -->
+                <th class="col-text">Текст</th> <!-- Колонка текста -->
+                <th class="col-id">ID VK</th> <!-- Колонка ID сообщения во VK -->
+                <th class="col-log-id">Запись</th> <!-- Колонка ID в базе -->
+                <th class="col-actions">Действия</th> <!-- Колонка действий -->
               </tr> <!-- Конец строки заголовков -->
             </thead> <!-- Конец шапки -->
             <tbody id="logs-body"> <!-- Тело таблицы -->

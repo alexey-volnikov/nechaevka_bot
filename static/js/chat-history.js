@@ -89,7 +89,7 @@
     const replyCell = buildReplyPreview(message.reply, { mode: 'compact' }); // Строим компактное превью ответа
     const { contentCell } = prepareGalleryContent(message, galleryApi, galleryKey); // Готовим вложения и галерею
     const textCell = message.text ?? ''; // Берем текст сообщения или пустую строку
-    row.innerHTML = `<td class="text-secondary small text-nowrap">${createdAt}</td><td class="text-nowrap">${peerCell}</td><td class="text-nowrap">${authorCell}</td><td>${replyCell}</td><td>${contentCell}</td><td>${textCell}</td>`; // Заполняем HTML строки с дополнительной колонкой времени и запретом переноса в ключевых столбцах
+    row.innerHTML = `<td class="col-time text-secondary small text-nowrap">${createdAt}</td><td class="col-chat text-nowrap">${peerCell}</td><td class="col-author text-nowrap">${authorCell}</td><td class="col-reply">${replyCell}</td><td class="col-attachments">${contentCell}</td><td class="col-text">${textCell}</td>`; // Заполняем HTML строки с дополнительной колонкой времени и фиксированными классами ширины
     return row; // Возвращаем готовую строку
   } // Конец функции построения строки дашборда
 
@@ -109,7 +109,7 @@
     const messageIdCell = log.message_id ?? '—'; // Берем ID сообщения
     const logIdCell = log.id ?? '—'; // Берем ID записи лога
     const deleteButton = `<button type="button" class="btn btn-sm btn-outline-danger delete-log-btn" data-log-id="${log.id}">Удалить</button>`; // Формируем кнопку удаления
-    row.innerHTML = `<td class="text-nowrap">${createdAt}</td><td class="text-nowrap">${peerCell}</td><td class="text-nowrap">${authorCell}</td><td class="text-nowrap">${botBadge}</td><td>${replyCell}</td><td>${contentCell}</td><td>${textCell}</td><td class="text-nowrap">${messageIdCell}</td><td class="text-nowrap">${logIdCell}</td><td>${deleteButton}</td>`; // Заполняем HTML строки таблицы логов с запретом переноса ключевых ячеек
+    row.innerHTML = `<td class="col-time text-nowrap">${createdAt}</td><td class="col-chat text-nowrap">${peerCell}</td><td class="col-author text-nowrap">${authorCell}</td><td class="col-flag text-nowrap">${botBadge}</td><td class="col-reply">${replyCell}</td><td class="col-attachments">${contentCell}</td><td class="col-text">${textCell}</td><td class="col-id text-nowrap">${messageIdCell}</td><td class="col-log-id text-nowrap">${logIdCell}</td><td class="col-actions">${deleteButton}</td>`; // Заполняем HTML строки таблицы логов с фиксированными классами ширины и запретом переноса ключевых ячеек
     return row; // Возвращаем готовую строку
   } // Конец функции построения строки логов
 
@@ -126,15 +126,15 @@
     const authorCell = buildSenderCell(message, { allowLink: true, showBotBadge: true }); // Собираем ячейку отправителя
     const { contentCell } = prepareGalleryContent(message, galleryApi, galleryKey); // Подготавливаем вложения и создаем ячейку с бейджами
     const textCell = message.text ?? '—'; // Берем текст сообщения или плейсхолдер
-    const cells = [`<td class="text-nowrap">${createdAtCell}</td>`]; // Начинаем набор ячеек с времени без переноса
+    const cells = [`<td class="col-time text-nowrap">${createdAtCell}</td>`]; // Начинаем набор ячеек с времени без переноса и фиксированной шириной
     if (showChatColumn) { // Если нужно показывать столбец чата
-      cells.push(`<td class="text-nowrap">${peerCell}</td>`); // Добавляем ячейку чата без переноса
+      cells.push(`<td class="col-chat text-nowrap">${peerCell}</td>`); // Добавляем ячейку чата без переноса и фиксированной шириной
     } // Конец проверки столбца чата
     if (showSenderColumn) { // Если нужно показывать столбец отправителя
-      cells.push(`<td class="text-nowrap">${authorCell}</td>`); // Добавляем ячейку отправителя без переноса
+      cells.push(`<td class="col-author text-nowrap">${authorCell}</td>`); // Добавляем ячейку отправителя без переноса и фиксированной шириной
     } // Конец проверки столбца отправителя
-    cells.push(`<td>${contentCell}</td>`); // Добавляем ячейку с вложениями
-    cells.push(`<td>${textCell}</td>`); // Добавляем ячейку с текстом
+    cells.push(`<td class="col-attachments">${contentCell}</td>`); // Добавляем ячейку с вложениями с фиксированной шириной
+    cells.push(`<td class="col-text">${textCell}</td>`); // Добавляем ячейку с текстом с фиксированной шириной
     row.innerHTML = cells.join(''); // Склеиваем все ячейки в строку
     return row; // Возвращаем готовую строку
   } // Конец функции построения строки профиля

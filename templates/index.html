@@ -18,9 +18,14 @@
     .card-title { font-weight: 700; letter-spacing: 0.02em; } /* Заголовок карточек */
     .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачный фон таблицы */
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатая таблица */
-    .chat-table { table-layout: auto; width: 100%; } /* Автоматическое распределение ширины колонок без лишних пустот и растягивания */
-    .chat-table th, .chat-table td { font-size: 11px; padding: 2px 6px; white-space: nowrap; } /* Оставляем мелкий шрифт, еще сильнее сжимаем отступы и запрещаем переносы во всех ячейках */
-    .chat-table td { overflow: hidden; text-overflow: ellipsis; } /* Обрезаем длинные значения с многоточием, чтобы строки оставались в одну линию */
+    .chat-table { table-layout: fixed; width: 100%; } /* Фиксированная сетка, чтобы ширина колонок была предсказуемой и не уезжала */
+    .chat-table th, .chat-table td { font-size: 11px; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; } /* Минимальный шрифт, узкие отступы и жесткое ограничение ширины с многоточием внутри фиксированной таблицы */
+    .col-time { width: 120px; } /* Колонка времени узкая и стабильная */
+    .col-chat { width: 200px; } /* Колонка названия чата средней ширины */
+    .col-author { width: 200px; } /* Колонка отправителя средней ширины */
+    .col-reply { width: 240px; } /* Колонка ответа с запасом под текст */
+    .col-attachments { width: 160px; } /* Колонка вложений под бейджи */
+    .col-text { width: 100%; } /* Текст сообщения занимает остаток строки и режется многоточием */
     .pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.4); color: #cbd5e1; font-size: 13px; } /* Пилюли статуса */
     .stat-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; } /* Точка индикатора */
     .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
@@ -234,12 +239,12 @@
             <table class="table table-sm table-striped align-middle mb-0 chat-table"> <!-- Таблица сообщений с уменьшенным шрифтом -->
               <thead class="text-secondary"> <!-- Заголовок таблицы -->
                 <tr> <!-- Строка заголовка -->
-                  <th class="text-nowrap">Время</th> <!-- Заголовок столбца времени без переноса строки -->
-                  <th class="text-nowrap">Чат</th> <!-- Заголовок столбца без переноса, чтобы название умещалось целиком -->
-                  <th class="text-nowrap">Отправитель</th> <!-- Заголовок столбца с автором и пометкой бота без переноса строки -->
-                  <th>Ответ</th> <!-- Заголовок столбца -->
-                  <th>Вложения</th> <!-- Заголовок столбца -->
-                  <th>Текст</th> <!-- Заголовок столбца -->
+                  <th class="col-time text-nowrap">Время</th> <!-- Заголовок столбца времени без переноса строки -->
+                  <th class="col-chat text-nowrap">Чат</th> <!-- Заголовок столбца без переноса, чтобы название умещалось целиком -->
+                  <th class="col-author text-nowrap">Отправитель</th> <!-- Заголовок столбца с автором и пометкой бота без переноса строки -->
+                  <th class="col-reply">Ответ</th> <!-- Заголовок столбца -->
+                  <th class="col-attachments">Вложения</th> <!-- Заголовок столбца -->
+                  <th class="col-text">Текст</th> <!-- Заголовок столбца -->
                 </tr> <!-- Конец строки заголовка -->
               </thead> <!-- Конец заголовка таблицы -->
               <tbody id="messages-body"> <!-- Тело таблицы -->
