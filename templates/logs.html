@@ -14,7 +14,7 @@
     .badge-soft { background: rgba(99, 102, 241, 0.15); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.35); } /* Мягкий бейдж */
     .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачные ячейки */
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатость */
-    .chat-table th, .chat-table td { font-size: 13px; } /* Уменьшаем шрифт таблиц истории, чтобы названия и время помещались в строку */
+    .chat-table th, .chat-table td { font-size: 12px; } /* Еще сильнее уменьшаем шрифт таблиц истории, чтобы названия и время точно помещались в строку */
     .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
     .service-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 12px; font-size: 12px; } /* Пилюля статуса */
     .service-pill.info { background: rgba(56, 189, 248, 0.2); color: #bae6fd; border: 1px solid rgba(56, 189, 248, 0.5); } /* Цвет инфо */
@@ -114,10 +114,10 @@
           <table class="table table-striped align-middle mb-0 chat-table"> <!-- Таблица логов с уменьшенным шрифтом -->
             <thead class="text-secondary"> <!-- Шапка -->
               <tr> <!-- Строка заголовков -->
-                <th>Время</th> <!-- Колонка времени -->
-                <th>Чат</th> <!-- Колонка чата -->
-                <th>Отправитель</th> <!-- Колонка автора -->
-                <th>Бот?</th> <!-- Колонка бота -->
+                <th class="text-nowrap">Время</th> <!-- Колонка времени без переноса -->
+                <th class="text-nowrap">Чат</th> <!-- Колонка чата без переноса -->
+                <th class="text-nowrap">Отправитель</th> <!-- Колонка автора без переноса -->
+                <th class="text-nowrap">Бот?</th> <!-- Колонка бота без переноса -->
                 <th>Ответ</th> <!-- Колонка ответа -->
                 <th>Вложения</th> <!-- Колонка вложений -->
                 <th>Текст</th> <!-- Колонка текста -->

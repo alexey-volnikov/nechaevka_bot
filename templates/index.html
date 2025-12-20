@@ -18,7 +18,7 @@
     .card-title { font-weight: 700; letter-spacing: 0.02em; } /* Заголовок карточек */
     .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачный фон таблицы */
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатая таблица */
-    .chat-table th, .chat-table td { font-size: 13px; } /* Уменьшаем шрифт таблиц чатов, чтобы названия и время помещались в строку */
+    .chat-table th, .chat-table td { font-size: 12px; } /* Еще сильнее уменьшаем шрифт таблиц чатов, чтобы названия и время точно помещались в строку */
     .pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.4); color: #cbd5e1; font-size: 13px; } /* Пилюли статуса */
     .stat-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; } /* Точка индикатора */
     .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
@@ -232,9 +232,9 @@
             <table class="table table-sm table-striped align-middle mb-0 chat-table"> <!-- Таблица сообщений с уменьшенным шрифтом -->
               <thead class="text-secondary"> <!-- Заголовок таблицы -->
                 <tr> <!-- Строка заголовка -->
-                  <th>Время</th> <!-- Заголовок столбца времени -->
-                  <th>Чат</th> <!-- Заголовок столбца -->
-                  <th>Отправитель</th> <!-- Заголовок столбца с автором и пометкой бота -->
+                  <th class="text-nowrap">Время</th> <!-- Заголовок столбца времени без переноса строки -->
+                  <th class="text-nowrap">Чат</th> <!-- Заголовок столбца без переноса, чтобы название умещалось целиком -->
+                  <th class="text-nowrap">Отправитель</th> <!-- Заголовок столбца с автором и пометкой бота без переноса строки -->
                   <th>Ответ</th> <!-- Заголовок столбца -->
                   <th>Вложения</th> <!-- Заголовок столбца -->
                   <th>Текст</th> <!-- Заголовок столбца -->

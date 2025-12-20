@@ -89,7 +89,7 @@
     const replyCell = buildReplyPreview(message.reply, { mode: 'compact' }); // Строим компактное превью ответа
     const { contentCell } = prepareGalleryContent(message, galleryApi, galleryKey); // Готовим вложения и галерею
     const textCell = message.text ?? ''; // Берем текст сообщения или пустую строку
-    row.innerHTML = `<td class="text-secondary small">${createdAt}</td><td>${peerCell}</td><td>${authorCell}</td><td>${replyCell}</td><td>${contentCell}</td><td>${textCell}</td>`; // Заполняем HTML строки с дополнительной колонкой времени
+    row.innerHTML = `<td class="text-secondary small text-nowrap">${createdAt}</td><td class="text-nowrap">${peerCell}</td><td class="text-nowrap">${authorCell}</td><td>${replyCell}</td><td>${contentCell}</td><td>${textCell}</td>`; // Заполняем HTML строки с дополнительной колонкой времени и запретом переноса в ключевых столбцах
     return row; // Возвращаем готовую строку
   } // Конец функции построения строки дашборда
 
@@ -109,7 +109,7 @@
     const messageIdCell = log.message_id ?? '—'; // Берем ID сообщения
     const logIdCell = log.id ?? '—'; // Берем ID записи лога
     const deleteButton = `<button type="button" class="btn btn-sm btn-outline-danger delete-log-btn" data-log-id="${log.id}">Удалить</button>`; // Формируем кнопку удаления
-    row.innerHTML = `<td>${createdAt}</td><td>${peerCell}</td><td>${authorCell}</td><td>${botBadge}</td><td>${replyCell}</td><td>${contentCell}</td><td>${textCell}</td><td>${messageIdCell}</td><td>${logIdCell}</td><td>${deleteButton}</td>`; // Заполняем HTML строки таблицы логов
+    row.innerHTML = `<td class="text-nowrap">${createdAt}</td><td class="text-nowrap">${peerCell}</td><td class="text-nowrap">${authorCell}</td><td class="text-nowrap">${botBadge}</td><td>${replyCell}</td><td>${contentCell}</td><td>${textCell}</td><td class="text-nowrap">${messageIdCell}</td><td class="text-nowrap">${logIdCell}</td><td>${deleteButton}</td>`; // Заполняем HTML строки таблицы логов с запретом переноса ключевых ячеек
     return row; // Возвращаем готовую строку
   } // Конец функции построения строки логов
 
@@ -126,12 +126,12 @@
     const authorCell = buildSenderCell(message, { allowLink: true, showBotBadge: true }); // Собираем ячейку отправителя
     const { contentCell } = prepareGalleryContent(message, galleryApi, galleryKey); // Подготавливаем вложения и создаем ячейку с бейджами
     const textCell = message.text ?? '—'; // Берем текст сообщения или плейсхолдер
-    const cells = [`<td>${createdAtCell}</td>`]; // Начинаем набор ячеек с времени
+    const cells = [`<td class="text-nowrap">${createdAtCell}</td>`]; // Начинаем набор ячеек с времени без переноса
     if (showChatColumn) { // Если нужно показывать столбец чата
-      cells.push(`<td>${peerCell}</td>`); // Добавляем ячейку чата
+      cells.push(`<td class="text-nowrap">${peerCell}</td>`); // Добавляем ячейку чата без переноса
     } // Конец проверки столбца чата
     if (showSenderColumn) { // Если нужно показывать столбец отправителя
-      cells.push(`<td>${authorCell}</td>`); // Добавляем ячейку отправителя
+      cells.push(`<td class="text-nowrap">${authorCell}</td>`); // Добавляем ячейку отправителя без переноса
     } // Конец проверки столбца отправителя
     cells.push(`<td>${contentCell}</td>`); // Добавляем ячейку с вложениями
     cells.push(`<td>${textCell}</td>`); // Добавляем ячейку с текстом
