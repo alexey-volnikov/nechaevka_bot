@@ -14,7 +14,9 @@
     .badge-soft { background: rgba(99, 102, 241, 0.15); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.35); } /* Мягкий бейдж */
     .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачные ячейки */
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатость */
-    .chat-table th, .chat-table td { font-size: 12px; } /* Еще сильнее уменьшаем шрифт таблиц истории, чтобы названия и время точно помещались в строку */
+    .chat-table { table-layout: fixed; width: 100%; } /* Фиксированная сетка колонок для сжатия ширины без переноса */
+    .chat-table th, .chat-table td { font-size: 11px; padding: 4px 8px; white-space: nowrap; } /* Минимизируем шрифт, уменьшаем отступы и запрещаем переносы во всех ячейках */
+    .chat-table td { overflow: hidden; text-overflow: ellipsis; } /* Обрезаем длинные значения с многоточием, чтобы каждая строка оставалась в одну линию */
     .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
     .service-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 12px; font-size: 12px; } /* Пилюля статуса */
     .service-pill.info { background: rgba(56, 189, 248, 0.2); color: #bae6fd; border: 1px solid rgba(56, 189, 248, 0.5); } /* Цвет инфо */

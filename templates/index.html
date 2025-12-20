@@ -18,7 +18,9 @@
     .card-title { font-weight: 700; letter-spacing: 0.02em; } /* Заголовок карточек */
     .table > :not(caption) > * > * { background-color: transparent; color: #e2e8f0; } /* Прозрачный фон таблицы */
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатая таблица */
-    .chat-table th, .chat-table td { font-size: 12px; } /* Еще сильнее уменьшаем шрифт таблиц чатов, чтобы названия и время точно помещались в строку */
+    .chat-table { table-layout: fixed; width: 100%; } /* Фиксированная сетка колонок и полная ширина, чтобы ячейки сжимались и не переносились */
+    .chat-table th, .chat-table td { font-size: 11px; padding: 4px 8px; white-space: nowrap; } /* Еще сильнее уменьшаем шрифт, поджимаем отступы и запрещаем переносы во всех ячейках */
+    .chat-table td { overflow: hidden; text-overflow: ellipsis; } /* Обрезаем длинные значения с многоточием, чтобы строки оставались в одну линию */
     .pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.4); color: #cbd5e1; font-size: 13px; } /* Пилюли статуса */
     .stat-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; } /* Точка индикатора */
     .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
