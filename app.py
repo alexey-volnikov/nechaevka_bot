@@ -1471,7 +1471,38 @@ def build_dashboard_app(
         }
 
     def assemble_storage() -> Dict[str, object]:
-        return event_logger.describe_storage()  # Возвращаем информацию о файле базы
+        db_storage = event_logger.describe_storage()  # Читаем информацию о файле базы
+        attachments_root = ATTACHMENTS_ROOT  # Определяем корневую папку вложений
+        attachments_exists = attachments_root.exists()  # Проверяем наличие папки вложений
+        attachments_size = 0  # Инициализируем суммарный размер вложений
+        if attachments_exists:  # Если папка существует
+            for root_dir, _dirs, files in os.walk(attachments_root):  # Обходим все подпапки и файлы
+                for filename in files:  # Перебираем файлы
+                    try:  # Пытаемся прочитать размер
+                        file_path = Path(root_dir) / filename  # Формируем путь до файла
+                        attachments_size += file_path.stat().st_size  # Добавляем размер файла к сумме
+                    except Exception:  # При ошибке чтения пропускаем файл
+                        continue  # Продолжаем обход без падения
+        sticker_cache_root = STICKER_CACHE_DIR  # Папка кэша стикеров
+        sticker_cache_exists = sticker_cache_root.exists()  # Проверяем, создан ли кэш
+        sticker_cache_size = 0  # Инициализируем суммарный размер кэша стикеров
+        if sticker_cache_exists:  # Если папка кэша существует
+            for root_dir, _dirs, files in os.walk(sticker_cache_root):  # Обходим кэш по подпапкам
+                for filename in files:  # Перебираем файлы кэша
+                    try:  # Пробуем прочитать размер файла
+                        file_path = Path(root_dir) / filename  # Получаем путь до файла кэша
+                        sticker_cache_size += file_path.stat().st_size  # Добавляем размер к общему объему кэша
+                    except Exception:  # Если чтение размера не удалось
+                        continue  # Пропускаем файл, не прерывая суммирование
+        return {  # Возвращаем объединенную информацию
+            **db_storage,  # Данные по файлу базы
+            "attachments_path": str(attachments_root),  # Путь до папки вложений
+            "attachments_exists": attachments_exists,  # Флаг существования вложений
+            "attachments_size_bytes": attachments_size,  # Суммарный размер вложений в байтах
+            "sticker_cache_path": str(sticker_cache_root),  # Путь к кэшу стикеров
+            "sticker_cache_exists": sticker_cache_exists,  # Флаг существования кэша стикеров
+            "sticker_cache_size_bytes": sticker_cache_size,  # Суммарный размер кэша стикеров
+        }
 
     def localize_iso(timestamp: Optional[str]) -> Optional[str]:
         try:  # Пытаемся преобразовать ISO-строку
