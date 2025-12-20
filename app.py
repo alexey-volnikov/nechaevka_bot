@@ -267,11 +267,21 @@ class EventLogger:
     ) -> None:
         message_unix_time = payload.get("date")  # Берем исходный таймштамп сообщения из VK, если он передан
         local_tz = datetime.now().astimezone().tzinfo  # Запоминаем локальную таймзону для перевода времени
-        created_at_dt = (  # Определяем datetime создания сообщения
-            datetime.fromtimestamp(message_unix_time, tz=local_tz)  # Переводим UNIX-таймштамп сообщения в локальное время
-            if isinstance(message_unix_time, (int, float))  # Проверяем, что таймштамп валиден
-            else datetime.now().astimezone()  # Иначе фиксируем время вставки как текущее
-        )
+        created_at_dt = None  # Инициализируем переменную времени создания сообщения
+        if isinstance(message_unix_time, str) and message_unix_time.isdigit():  # Проверяем, что таймштамп пришел строкой с цифрами
+            message_unix_time = int(message_unix_time)  # Переводим строковое число в int, чтобы сохранить точное время отправки
+        if isinstance(message_unix_time, (int, float)):  # Если таймштамп является числом в секундах
+            created_at_dt = datetime.fromtimestamp(message_unix_time, tz=local_tz)  # Конвертируем UNIX-время в локальный datetime
+        elif isinstance(message_unix_time, str):  # Если таймштамп передан строкой другого формата
+            try:  # Пробуем распарсить ISO-строку времени
+                normalized_str = message_unix_time.replace("Z", "+00:00")  # Заменяем Z на смещение UTC для совместимости с fromisoformat
+                created_at_dt = datetime.fromisoformat(normalized_str)  # Парсим строку в datetime
+                if created_at_dt.tzinfo is None:  # Если в строке не было таймзоны
+                    created_at_dt = created_at_dt.replace(tzinfo=local_tz)  # Добавляем локальную таймзону, чтобы избежать смещения
+            except Exception:  # Если парсинг ISO не удался
+                created_at_dt = None  # Оставляем None и перейдем к запасному варианту
+        if created_at_dt is None:  # Если не удалось определить время отправки из payload
+            created_at_dt = datetime.now().astimezone()  # Фиксируем момент вставки как запасной вариант, чтобы не терять данные
         created_at = created_at_dt.isoformat()  # Сериализуем выбранное время в ISO-строку для базы
         peer_id = payload.get("peer_id")  # Берем ID чата
         from_id = payload.get("from_id")  # Берем автора
