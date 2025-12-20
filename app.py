@@ -265,7 +265,14 @@ class EventLogger:
         peer_avatar: Optional[str] = None,
         from_avatar: Optional[str] = None,
     ) -> None:
-        created_at = datetime.now().astimezone().isoformat()  # Фиксируем локальное время вставки с таймзоной
+        message_unix_time = payload.get("date")  # Берем исходный таймштамп сообщения из VK, если он передан
+        local_tz = datetime.now().astimezone().tzinfo  # Запоминаем локальную таймзону для перевода времени
+        created_at_dt = (  # Определяем datetime создания сообщения
+            datetime.fromtimestamp(message_unix_time, tz=local_tz)  # Переводим UNIX-таймштамп сообщения в локальное время
+            if isinstance(message_unix_time, (int, float))  # Проверяем, что таймштамп валиден
+            else datetime.now().astimezone()  # Иначе фиксируем время вставки как текущее
+        )
+        created_at = created_at_dt.isoformat()  # Сериализуем выбранное время в ISO-строку для базы
         peer_id = payload.get("peer_id")  # Берем ID чата
         from_id = payload.get("from_id")  # Берем автора
         message_id = payload.get("id")  # Берем ID сообщения
