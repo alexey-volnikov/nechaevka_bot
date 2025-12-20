@@ -55,7 +55,7 @@ def safe_int_env(value: Optional[str], fallback: int) -> int:  # Функция 
         return fallback  # Возвращаем запасной вариант
 
 
-DEFAULT_TIMELINE_MINUTES = safe_int_env(os.getenv("TIMELINE_DEFAULT_MINUTES"), 60)  # Диапазон минут по умолчанию для графика
+DEFAULT_TIMELINE_MINUTES = safe_int_env(os.getenv("TIMELINE_DEFAULT_MINUTES"), 1440)  # Диапазон минут по умолчанию для графика
 ATTACHMENTS_ROOT = Path(os.getenv("ATTACHMENTS_DIR") or os.path.join(os.getcwd(), "data", "attachments")).resolve()  # Базовая папка для вложений, доступная через веб
 ATTACHMENTS_ROOT.mkdir(parents=True, exist_ok=True)  # Создаем директорию вложений, если её нет
 STICKER_CACHE_DIR = ATTACHMENTS_ROOT / "stickers"  # Отдельная папка для кэширования стикеров по их ID
@@ -265,7 +265,24 @@ class EventLogger:
         peer_avatar: Optional[str] = None,
         from_avatar: Optional[str] = None,
     ) -> None:
-        created_at = datetime.now().astimezone().isoformat()  # Фиксируем локальное время вставки с таймзоной
+        message_unix_time = payload.get("date")  # Берем исходный таймштамп сообщения из VK, если он передан
+        local_tz = datetime.now().astimezone().tzinfo  # Запоминаем локальную таймзону для перевода времени
+        created_at_dt = None  # Инициализируем переменную времени создания сообщения
+        if isinstance(message_unix_time, str) and message_unix_time.isdigit():  # Проверяем, что таймштамп пришел строкой с цифрами
+            message_unix_time = int(message_unix_time)  # Переводим строковое число в int, чтобы сохранить точное время отправки
+        if isinstance(message_unix_time, (int, float)):  # Если таймштамп является числом в секундах
+            created_at_dt = datetime.fromtimestamp(message_unix_time, tz=local_tz)  # Конвертируем UNIX-время в локальный datetime
+        elif isinstance(message_unix_time, str):  # Если таймштамп передан строкой другого формата
+            try:  # Пробуем распарсить ISO-строку времени
+                normalized_str = message_unix_time.replace("Z", "+00:00")  # Заменяем Z на смещение UTC для совместимости с fromisoformat
+                created_at_dt = datetime.fromisoformat(normalized_str)  # Парсим строку в datetime
+                if created_at_dt.tzinfo is None:  # Если в строке не было таймзоны
+                    created_at_dt = created_at_dt.replace(tzinfo=local_tz)  # Добавляем локальную таймзону, чтобы избежать смещения
+            except Exception:  # Если парсинг ISO не удался
+                created_at_dt = None  # Оставляем None и перейдем к запасному варианту
+        if created_at_dt is None:  # Если не удалось определить время отправки из payload
+            created_at_dt = datetime.now().astimezone()  # Фиксируем момент вставки как запасной вариант, чтобы не терять данные
+        created_at = created_at_dt.isoformat()  # Сериализуем выбранное время в ISO-строку для базы
         peer_id = payload.get("peer_id")  # Берем ID чата
         from_id = payload.get("from_id")  # Берем автора
         message_id = payload.get("id")  # Берем ID сообщения
@@ -522,18 +539,34 @@ class EventLogger:
 
     def fetch_timeline(self, range_minutes: int = 60, max_points: int = 120) -> List[Dict[str, object]]:
         safe_range = range_minutes if isinstance(range_minutes, int) and range_minutes > 0 else 60  # Нормализуем диапазон минут
-        safe_points = max(1, max_points)  # Страхуем количество точек на графике
-        bucket_minutes = max(1, (safe_range + safe_points - 1) // safe_points)  # Рассчитываем размер интервала в минутах
+        safe_points = max(1, max_points)  # Страхуем количество точек на графике от нулевого значения
+        bucket_minutes = max(1, (safe_range + safe_points - 1) // safe_points)  # Рассчитываем размер корзины в минутах
         now = datetime.now().astimezone()  # Берем текущее время с таймзоной
-        since = (now - timedelta(minutes=safe_range)).isoformat()  # Вычисляем нижнюю границу по времени
+        since_dt = now - timedelta(minutes=safe_range)  # Вычисляем нижнюю границу диапазона в объекте datetime
+        aligned_since = since_dt.replace(second=0, microsecond=0)  # Округляем начало диапазона до минутной сетки
+        offset = aligned_since.minute % bucket_minutes  # Вычисляем смещение начала относительно выбранной корзины
+        if offset:  # Если начало диапазона попадает внутрь корзины
+            aligned_since -= timedelta(minutes=offset)  # Сдвигаем старт на границу корзины для ровной сетки
+        bucket_count = ((safe_range + bucket_minutes - 1) // bucket_minutes) + 1  # Определяем количество корзин с запасом на текущий момент
+        buckets: List[Dict[str, object]] = []  # Готовим список корзин для детерминированной оси времени
+        for idx in range(bucket_count):  # Перебираем индексы корзин
+            bucket_start = aligned_since + timedelta(minutes=bucket_minutes * idx)  # Считаем начало корзины по индексу
+            buckets.append(  # Добавляем корзину в список
+                {
+                    "time": bucket_start.isoformat(),  # Сохраняем начало корзины для подписи оси
+                    "events": 0,  # Инициализируем счетчик событий
+                    "messages": 0,  # Инициализируем счетчик сообщений
+                    "invites": 0,  # Резервируем поле приглашений для совместимости интерфейса
+                }
+            )
         with self._lock:  # Начинаем потокобезопасное чтение
             cursor = self._connection.cursor()  # Получаем курсор
-            cursor.execute(  # Запрашиваем все сообщения начиная с нижней границы
+            cursor.execute(  # Запрашиваем сообщения начиная с нижней границы
                 "SELECT created_at FROM events WHERE event_type = ? AND created_at >= ? ORDER BY created_at",
-                ("message", since),
+                ("message", since_dt.isoformat()),
             )
             rows = cursor.fetchall()  # Читаем все строки
-        buckets: Dict[str, Dict[str, object]] = {}  # Готовим словарь для сгруппированных точек
+        total_seconds_per_bucket = bucket_minutes * 60  # Вычисляем длительность корзины в секундах
         for row in rows:  # Перебираем строки результата
             created_raw = row.get("created_at") if isinstance(row, dict) else row[0] if row else None  # Достаем поле времени
             try:  # Пытаемся преобразовать в datetime
@@ -542,18 +575,15 @@ class EventLogger:
                 continue  # Пропускаем запись
             if not created_at:  # Проверяем, что дата есть
                 continue  # Пропускаем пустые
-            bucket_start = created_at.replace(second=0, microsecond=0)  # Округляем до начала минуты
-            offset = created_at.minute % bucket_minutes  # Вычисляем смещение внутри корзины
-            if offset:  # Если есть смещение
-                bucket_start -= timedelta(minutes=offset)  # Сдвигаем к началу корзины
-            bucket_key = bucket_start.isoformat()  # Формируем ключ корзины
-            bucket = buckets.setdefault(  # Получаем или создаем корзину
-                bucket_key,
-                {"time": bucket_key, "events": 0, "messages": 0, "invites": 0},  # Начальные значения
-            )
-            bucket["events"] += 1  # Увеличиваем количество событий
-            bucket["messages"] += 1  # Увеличиваем количество сообщений
-        return sorted(buckets.values(), key=lambda x: x["time"])  # Возвращаем точки, отсортированные по времени
+            if created_at.tzinfo is None:  # Проверяем наличие таймзоны
+                created_at = created_at.replace(tzinfo=now.tzinfo)  # Добавляем локальную зону, чтобы не смещать время
+            delta_seconds = (created_at - aligned_since).total_seconds()  # Считаем смещение точки относительно первой корзины
+            bucket_index = int(delta_seconds // total_seconds_per_bucket) if delta_seconds >= 0 else None  # Определяем индекс корзины
+            if bucket_index is None or bucket_index >= len(buckets):  # Проверяем попадание в диапазон корзин
+                continue  # Пропускаем точки вне окна просмотра
+            buckets[bucket_index]["events"] += 1  # Увеличиваем количество событий
+            buckets[bucket_index]["messages"] += 1  # Увеличиваем количество сообщений
+        return [bucket for bucket in buckets if bucket["time"] <= now.isoformat()]  # Возвращаем корзины до текущего момента
 
 
 class ServiceEventLogger:  # Логгер сервисных событий с отдельной таблицей
