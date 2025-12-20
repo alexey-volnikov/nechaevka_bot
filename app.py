@@ -55,7 +55,7 @@ def safe_int_env(value: Optional[str], fallback: int) -> int:  # Функция 
         return fallback  # Возвращаем запасной вариант
 
 
-DEFAULT_TIMELINE_MINUTES = safe_int_env(os.getenv("TIMELINE_DEFAULT_MINUTES"), 60)  # Диапазон минут по умолчанию для графика
+DEFAULT_TIMELINE_MINUTES = safe_int_env(os.getenv("TIMELINE_DEFAULT_MINUTES"), 1440)  # Диапазон минут по умолчанию для графика
 ATTACHMENTS_ROOT = Path(os.getenv("ATTACHMENTS_DIR") or os.path.join(os.getcwd(), "data", "attachments")).resolve()  # Базовая папка для вложений, доступная через веб
 ATTACHMENTS_ROOT.mkdir(parents=True, exist_ok=True)  # Создаем директорию вложений, если её нет
 STICKER_CACHE_DIR = ATTACHMENTS_ROOT / "stickers"  # Отдельная папка для кэширования стикеров по их ID

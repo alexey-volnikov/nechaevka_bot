@@ -149,16 +149,6 @@
     </div> <!-- Конец блока информации о хранилище -->
 
     <div class="row g-4 mb-4"> <!-- Строка метрик -->
-      <div class="col-12 col-lg-6"> <!-- Колонка активных участников -->
-        <div class="glass p-4 shadow-soft h-100"> <!-- Карточка -->
-            <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок карточки -->
-              <div class="card-title" data-bs-toggle="tooltip" title="Сколько уникальных людей активно взаимодействуют">Активные участники</div> <!-- Текст с подсказкой -->
-              <span class="badge-soft badge rounded-pill">Live</span> <!-- Бейдж -->
-            </div> <!-- Конец заголовка -->
-            <div class="metric" id="active-members-count">0</div> <!-- Число активных участников -->
-          <div class="metric-sub">За последние события</div> <!-- Подпись -->
-        </div> <!-- Конец карточки -->
-      </div> <!-- Конец колонки -->
       <div class="col-12 col-lg-6"> <!-- Колонка сообщений -->
         <div class="glass p-4 shadow-soft h-100"> <!-- Карточка -->
             <div class="d-flex justify-content-between align-items-center mb-3"> <!-- Заголовок карточки -->
@@ -274,7 +264,6 @@
     const initialStorage = {{ initial_storage|tojson }}; // Читаем стартовую информацию о файле базы
     const demoMode = {{ 'true' if demo_mode else 'false' }}; // Флаг демо-режима
 
-    const activeMembersEl = document.getElementById('active-members-count'); // Находим элемент активных участников
     const messagesEl = document.getElementById('messages-count'); // Находим элемент сообщений
     const messagesBody = document.getElementById('messages-body'); // Тело таблицы сообщений
     const conversationsBody = document.getElementById('conversations-body'); // Тело таблицы диалогов
@@ -297,7 +286,7 @@
     const galleryApi = window.galleryBridge || {}; // Получаем общий API галереи из подключенного файла
     const chatApi = window.chatHistory || {}; // Получаем единый модуль истории чата
     let currentPeer = ''; // Текущий выбранный peer_id
-    let selectedRange = Number(initialStats?.range_minutes ?? 60); // Текущий выбранный диапазон минут
+    let selectedRange = Number(initialStats?.range_minutes ?? 1440); // Текущий выбранный диапазон минут
 
     const timezoneInfo = Intl.DateTimeFormat().resolvedOptions(); // Считываем параметры локальной таймзоны браузера
     const timezoneOffsetMinutes = new Date().getTimezoneOffset(); // Получаем смещение от UTC в минутах
@@ -329,14 +318,14 @@
       demoBadge.style.display = 'inline-flex'; // Показываем бейдж демо
     } // Конец условия демо
 
+    const initialTimeline = Array.isArray(initialStats.timeline) ? [...initialStats.timeline].sort((a, b) => new Date(a?.time || 0).valueOf() - new Date(b?.time || 0).valueOf()) : []; // Готовим отсортированный таймлайн для первичной отрисовки
     const ctx = document.getElementById('events-chart'); // Получаем холст графика
     const chart = new Chart(ctx, { // Создаем график
       type: 'line', // Тип графика
       data: { // Данные графика
-        labels: initialStats.timeline.map((p) => formatDateTime(p.time)), // Метки времени в локальном формате
+        labels: initialTimeline.map((p) => formatDateTime(p.time)), // Метки времени в локальном формате
         datasets: [ // Наборы данных
-          { label: 'Активные участники', data: initialStats.timeline.map((p) => p.invites), borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.25)', tension: 0.3, fill: true }, // Линия активных участников
-          { label: 'Сообщения', data: initialStats.timeline.map((p) => p.messages), borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.25)', tension: 0.3, fill: true }, // Линия сообщений
+          { label: 'Сообщения', data: initialTimeline.map((p) => p.messages), borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.25)', tension: 0.3, fill: true }, // Линия сообщений
         ], // Конец наборов
       }, // Конец данных
       options: { // Настройки графика
@@ -588,11 +577,10 @@
     function updateMetrics(stats) { // Функция обновления чисел
       const safeStats = stats || {}; // Нормализуем объект статистики
       const safeTimeline = Array.isArray(safeStats.timeline) ? safeStats.timeline : []; // Готовим безопасный массив таймлайна
-      activeMembersEl.textContent = safeStats.invites ?? 0; // Обновляем количество активных участников
+      const normalizedTimeline = [...safeTimeline].sort((a, b) => new Date(a?.time || 0).valueOf() - new Date(b?.time || 0).valueOf()); // Сортируем точки по времени для точного графика
       messagesEl.textContent = safeStats.messages ?? 0; // Обновляем количество сообщений
-      chart.data.labels = safeTimeline.map((p) => formatDateTime(p.time)); // Обновляем метки графика в локальном формате
-      chart.data.datasets[0].data = safeTimeline.map((p) => p.invites ?? 0); // Обновляем линию активных участников
-      chart.data.datasets[1].data = safeTimeline.map((p) => p.messages ?? 0); // Обновляем линию сообщений
+      chart.data.labels = normalizedTimeline.map((p) => formatDateTime(p.time)); // Обновляем метки графика в локальном формате
+      chart.data.datasets[0].data = normalizedTimeline.map((p) => p.messages ?? 0); // Обновляем линию сообщений
       chart.update(); // Перерисовываем график
       if (safeStats.range_minutes && timeRangeSelect) { // Если в ответе есть диапазон и селектор существует
         selectedRange = Number(safeStats.range_minutes); // Обновляем выбранный диапазон
