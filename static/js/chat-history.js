@@ -105,11 +105,10 @@
     const hasAttachments = (normalizedAttachments?.length || 0) > 0 || (normalizedCopyHistory?.length || 0) > 0; // Проверяем наличие вложений или репостов
     const textCell = message.text ?? ''; // Берем текст сообщения или оставляем пустую строку
     card.innerHTML = `
-      <div class="chat-avatar-col">${buildAvatarBubble(message.from_name, message.from_avatar)}</div>
       <div class="chat-bubble">
         <div class="chat-bubble-top">
           <div class="chat-bubble-headline">
-            <div class="chat-bubble-author">${authorCell}</div>
+            <div class="chat-bubble-author-line">${buildAvatarBubble(message.from_name, message.from_avatar)}<div class="chat-bubble-author">${authorCell}</div></div>
             <div class="chat-bubble-time text-secondary">${createdAt}</div>
           </div>
           <div class="chat-bubble-meta-line">${peerCell}</div>
@@ -142,11 +141,10 @@
     const logIdCell = log.id ?? '—'; // Берем ID записи в базе
     const deleteButton = `<button type="button" class="btn btn-sm btn-outline-danger delete-log-btn" data-log-id="${log.id}">Удалить</button>`; // Формируем кнопку удаления
     card.innerHTML = `
-      <div class="chat-avatar-col">${buildAvatarBubble(log.from_name, log.from_avatar)}</div>
       <div class="chat-bubble">
         <div class="chat-bubble-top">
           <div class="chat-bubble-headline">
-            <div class="chat-bubble-author">${authorCell}</div>
+            <div class="chat-bubble-author-line">${buildAvatarBubble(log.from_name, log.from_avatar)}<div class="chat-bubble-author">${authorCell}</div></div>
             <div class="chat-bubble-time text-secondary">${createdAt}</div>
           </div>
           <div class="chat-bubble-meta-line d-flex align-items-center gap-2 flex-wrap">
@@ -182,13 +180,12 @@
     const { contentCell, normalizedAttachments, normalizedCopyHistory } = prepareGalleryContent(message, galleryApi, galleryKey); // Подготавливаем вложения и галерею
     const hasAttachments = (normalizedAttachments?.length || 0) > 0 || (normalizedCopyHistory?.length || 0) > 0; // Проверяем наличие вложений или репостов
     const textCell = message.text ?? '—'; // Берем текст сообщения или плейсхолдер
-    const authorLine = showSenderColumn ? `<div class="chat-bubble-author">${authorCell}</div>` : ''; // Формируем строку автора при включенном флаге
+    const authorLine = showSenderColumn ? `<div class="chat-bubble-author-line">${buildAvatarBubble(message.from_name, message.from_avatar)}<div class="chat-bubble-author">${authorCell}</div></div>` : '<div class="chat-bubble-author text-secondary">—</div>'; // Формируем строку автора и аватара или плейсхолдер
     card.innerHTML = `
-      <div class="chat-avatar-col">${buildAvatarBubble(message.from_name, message.from_avatar)}</div>
       <div class="chat-bubble">
         <div class="chat-bubble-top">
           <div class="chat-bubble-headline">
-            ${authorLine || '<div class="chat-bubble-author text-secondary">—</div>'}
+            ${authorLine}
             <div class="chat-bubble-time text-secondary">${createdAtCell}</div>
           </div>
           ${showChatColumn ? `<div class="chat-bubble-meta-line">${peerCell}</div>` : ''}
