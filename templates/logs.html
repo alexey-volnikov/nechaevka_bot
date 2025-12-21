@@ -16,17 +16,20 @@
     .table-striped > tbody > tr:nth-of-type(odd) > * { background: rgba(255, 255, 255, 0.03); } /* Полосатость */
     .chat-table { table-layout: fixed; width: 100%; } /* Сетка для вспомогательных таблиц */
     .chat-table th, .chat-table td { font-size: 11px; padding: 6px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; } /* Компактный стиль для вспомогательных таблиц */
-    .chat-feed { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; } /* Уплотненная лента сообщений без маркеров для мессенджерного вида */
-    .chat-item { display: flex; gap: 8px; align-items: flex-start; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 10px; } /* Компактная карточка сообщения */
-    .chat-avatar-col { width: 44px; display: flex; justify-content: center; } /* Узкая колонка под аватар в компактном режиме */
-    .chat-bubble { flex: 1; display: flex; flex-direction: column; gap: 6px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 12px; padding: 8px 10px; } /* Уплотненный пузырь сообщения */
-    .chat-bubble-header { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 11px; color: #cbd5e1; } /* Узкий заголовок пузыря */
-    .chat-bubble-meta { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; color: #e2e8f0; } /* Название чата без лишних отступов */
-    .chat-bubble-author { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #e2e8f0; } /* Компактное имя отправителя */
-    .chat-bubble-reply { border-left: 2px solid rgba(148, 163, 184, 0.4); padding-left: 8px; color: #cbd5e1; font-size: 11px; } /* Уплотненное превью ответа */
-    .chat-bubble-attachments { display: flex; flex-wrap: wrap; gap: 4px; } /* Плотный блок вложений */
-    .chat-bubble-text { font-size: 13px; line-height: 1.4; color: #e2e8f0; white-space: pre-wrap; } /* Компактный текст сообщения */
-    .chat-bubble-footer { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 11px; color: #cbd5e1; } /* Подвал карточки без лишних пробелов */
+    .chat-feed { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; } /* Воздушная вертикальная лента сообщений без маркеров */
+    .chat-item { display: flex; gap: 10px; align-items: flex-start; padding: 4px 0; } /* Строка ленты без отдельной обводки вокруг пузыря */
+    .chat-avatar-col { width: 48px; display: flex; justify-content: center; padding-top: 2px; } /* Узкая колонка под аватар слева как в мессенджере */
+    .chat-bubble { flex: 1; display: flex; flex-direction: column; gap: 8px; background: radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.08), transparent 45%), linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.85)); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 14px; padding: 10px 12px; box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25); } /* Пузырь сообщения в стиле Telegram с мягким свечением */
+    .chat-bubble-top { display: flex; flex-direction: column; gap: 4px; } /* Верхняя часть пузыря с подписями */
+    .chat-bubble-headline { display: flex; align-items: center; justify-content: space-between; gap: 8px; } /* Строка автора и времени */
+    .chat-bubble-meta-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: #a5b4fc; } /* Строка с названием чата и дополнительными метками */
+    .chat-bubble-meta { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: #e2e8f0; } /* Название чата в подписи */
+    .chat-bubble-author { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: #e2e8f0; } /* Имя отправителя в стиле мессенджера */
+    .chat-bubble-reply { border-left: 2px solid rgba(148, 163, 184, 0.4); padding-left: 10px; color: #cbd5e1; font-size: 12px; } /* Превью ответа с аккуратной полоской слева */
+    .chat-bubble-attachments { display: flex; flex-wrap: wrap; gap: 6px; } /* Группа вложений внутри пузыря с небольшими зазорами */
+    .chat-bubble-text { font-size: 14px; line-height: 1.5; color: #e2e8f0; white-space: pre-wrap; } /* Основной текст сообщения с комфортным кеглем */
+    .chat-bubble-footer { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 11px; color: #cbd5e1; } /* Подвал карточки с бейджами и кнопками */
+    .chat-flag-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.35); background: rgba(148, 163, 184, 0.12); color: #cbd5e1; font-size: 11px; } /* Плашка для статусов поверх пузыря */
     .shadow-soft { box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25); } /* Мягкая тень */
     .service-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 12px; font-size: 12px; } /* Пилюля статуса */
     .service-pill.info { background: rgba(56, 189, 248, 0.2); color: #bae6fd; border: 1px solid rgba(56, 189, 248, 0.5); } /* Цвет инфо */
