@@ -23,11 +23,13 @@
     const chatName = message.peer_title || 'Чат без названия'; // Определяем название чата
     const avatarUrl = message.peer_avatar; // Читаем аватар чата
     const allowLink = options.allowLink !== false; // Разрешаем ссылку по умолчанию
+    const showAvatar = options.showAvatar !== false; // Разрешаем показ аватара по умолчанию
     const hasId = Boolean(message.peer_id); // Проверяем наличие идентификатора чата
+    const baseLabel = showAvatar ? buildAvatarLabel(chatName, avatarUrl) : chatName; // Строим подпись с аватаром или только текстом
     if (allowLink && hasId) { // Если можно строить ссылку и есть ID
-      return `<a href="/chat/${message.peer_id}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2">${buildAvatarLabel(chatName, avatarUrl)}</a>`; // Возвращаем ссылку с аватаром и подписью
+      return `<a href="/chat/${message.peer_id}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2">${baseLabel}</a>`; // Возвращаем ссылку с выбранным форматом подписи
     } // Конец проверки возможности ссылки
-    return buildAvatarLabel(chatName, avatarUrl); // Возвращаем подпись без ссылки
+    return baseLabel; // Возвращаем подпись без ссылки
   } // Конец функции сборки ячейки чата
 
   function buildSenderCell(message, options = {}) { // Строим ячейку отправителя с плашкой бота
@@ -94,7 +96,7 @@
     } // Конец проверки удаления
     const formatDate = options.formatDate || ((value) => value || '—'); // Берем функцию форматирования времени или плейсхолдер
     const createdAt = formatDate(message.created_at); // Форматируем время создания записи
-    const peerCell = buildPeerCell(message, { allowLink: true }); // Строим подпись чата с возможной ссылкой
+    const peerCell = buildPeerCell(message, { allowLink: true, showAvatar: false }); // Строим подпись чата без дублирования аватара
     const authorCell = buildSenderCell(message, { allowLink: true, showBotBadge: true }); // Строим подпись отправителя с бейджем бота
     const replyCell = buildReplyPreview(message.reply, { mode: 'compact' }); // Готовим компактное превью ответа
     const hasReply = Boolean(message.reply && (message.reply.text || message.reply.from_name || message.reply.from_id)); // Проверяем, есть ли содержательный ответ
