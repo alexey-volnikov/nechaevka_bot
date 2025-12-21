@@ -37,8 +37,9 @@
     const avatarUrl = message.from_avatar; // Читаем аватар отправителя
     const allowLink = options.allowLink !== false; // Разрешаем ссылку по умолчанию
     const showBotBadge = options.showBotBadge !== false; // Разрешаем бейдж бота по умолчанию
+    const showAvatar = options.showAvatar !== false; // Разрешаем аватар по умолчанию, чтобы можно было скрыть дублирование
     const botBadge = message.is_bot && showBotBadge ? '<span class="sender-badge">Бот</span>' : ''; // Формируем бейдж бота при необходимости
-    const baseLabel = buildAvatarLabel(senderName, avatarUrl); // Строим базовую подпись с аватаркой
+    const baseLabel = showAvatar ? buildAvatarLabel(senderName, avatarUrl) : senderName; // Строим подпись с аватаром или только текстом
     const hasId = Boolean(message.from_id); // Проверяем наличие ID отправителя
     if (allowLink && hasId) { // Если можно строить ссылку и есть ID
       return `<div class="d-flex align-items-center gap-2 flex-wrap"><a href="/user/${message.from_id}" target="_blank" class="text-decoration-none text-light d-inline-flex align-items-center gap-2">${baseLabel}</a>${botBadge}</div>`; // Возвращаем подпись со ссылкой на профиль
@@ -97,7 +98,7 @@
     const formatDate = options.formatDate || ((value) => value || '—'); // Берем функцию форматирования времени или плейсхолдер
     const createdAt = formatDate(message.created_at); // Форматируем время создания записи
     const peerCell = buildPeerCell(message, { allowLink: true, showAvatar: false }); // Строим подпись чата без дублирования аватара
-    const authorCell = buildSenderCell(message, { allowLink: true, showBotBadge: true }); // Строим подпись отправителя с бейджем бота
+    const authorCell = buildSenderCell(message, { allowLink: true, showBotBadge: true, showAvatar: false }); // Строим подпись отправителя без повторного аватара, но с бейджем бота
     const replyCell = buildReplyPreview(message.reply, { mode: 'compact' }); // Готовим компактное превью ответа
     const hasReply = Boolean(message.reply && (message.reply.text || message.reply.from_name || message.reply.from_id)); // Проверяем, есть ли содержательный ответ
     const { contentCell, normalizedAttachments, normalizedCopyHistory } = prepareGalleryContent(message, galleryApi, galleryKey); // Нормализуем вложения и регистрируем их в галерее
@@ -128,7 +129,7 @@
     const formatDate = options.formatDate || ((value) => value || '—'); // Берем функцию форматирования времени
     const createdAt = formatDate(log.created_at); // Форматируем время создания
     const peerCell = buildPeerCell(log, { allowLink: true }); // Готовим подпись чата
-    const authorCell = buildSenderCell(log, { allowLink: true, showBotBadge: true }); // Готовим подпись отправителя
+    const authorCell = buildSenderCell(log, { allowLink: true, showBotBadge: true, showAvatar: false }); // Готовим подпись отправителя без дублирования аватара
     const botBadge = log.is_bot ? 'Да' : 'Нет'; // Определяем флаг бота текстом
     const replyCell = buildReplyPreview(log.reply, { mode: 'detailed', peerId: log.peer_id }); // Собираем детальное превью ответа
     const hasReply = Boolean(log.reply && (log.reply.text || log.reply.from_name || log.reply.from_id)); // Проверяем, есть ли содержательный ответ
@@ -171,7 +172,7 @@
     const showSenderColumn = Boolean(options.showSenderColumn); // Определяем, нужно ли показывать автора
     const createdAtCell = formatDate(message.created_at); // Форматируем дату создания
     const peerCell = buildPeerCell(message, { allowLink: true }); // Строим подпись чата
-    const authorCell = buildSenderCell(message, { allowLink: true, showBotBadge: true }); // Строим подпись отправителя
+    const authorCell = buildSenderCell(message, { allowLink: true, showBotBadge: true, showAvatar: false }); // Строим подпись отправителя без повторяющегося аватара
     const { contentCell, normalizedAttachments, normalizedCopyHistory } = prepareGalleryContent(message, galleryApi, galleryKey); // Подготавливаем вложения и галерею
     const hasAttachments = (normalizedAttachments?.length || 0) > 0 || (normalizedCopyHistory?.length || 0) > 0; // Проверяем наличие вложений или репостов
     const textCell = message.text ?? '—'; // Берем текст сообщения или плейсхолдер
